@@ -34,6 +34,11 @@
 *.idb
 *.pdb
 
+# 3DS
+*.cia
+*.cxi
+*.3dsx
+
 # datadump
 /tools/ddump/*
 
