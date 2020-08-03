@@ -428,6 +428,10 @@ void render_text_labels(void) {
     gSPMatrix(gDisplayListHead++, VIRTUAL_TO_PHYSICAL(mtx), G_MTX_PROJECTION | G_MTX_LOAD | G_MTX_NOPUSH);
     gSPDisplayList(gDisplayListHead++, dl_hud_img_begin);
 
+#ifdef ENABLE_N3DS_3D_MODE
+    gDPSet2d(gDisplayListHead++, 1);
+#endif
+
     for (i = 0; i < sTextLabelsCount; i++) {
         for (j = 0; j < sTextLabels[i]->length; j++) {
             glyphIndex = char_to_glyph_index(sTextLabels[i]->buffer[j]);

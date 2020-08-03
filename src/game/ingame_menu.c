@@ -3040,6 +3040,9 @@ s16 render_course_complete_screen(void) {
 // Only case 1 and 2 are used
 s16 render_menus_and_dialogs() {
     s16 mode = 0;
+#ifdef ENABLE_N3DS_3D_MODE
+    gDPSet2d(gDisplayListHead++, 1);
+#endif
 
     create_dl_ortho_matrix();
 

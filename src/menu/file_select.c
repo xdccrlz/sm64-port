@@ -2771,6 +2771,9 @@ static void print_file_select_strings(void) {
  */
 Gfx *geo_file_select_strings_and_menu_cursor(s32 callContext, UNUSED struct GraphNode *node, UNUSED Mat4 mtx) {
     if (callContext == GEO_CONTEXT_RENDER) {
+#ifdef ENABLE_N3DS_3D_MODE
+        gDPSet2d(gDisplayListHead++, 1);
+#endif
         print_file_select_strings();
         print_menu_cursor();
     }

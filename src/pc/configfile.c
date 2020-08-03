@@ -6,6 +6,10 @@
 #include <assert.h>
 #include <ctype.h>
 
+#ifdef TARGET_N3DS
+#include "3ds.h"
+#endif
+
 #include "configfile.h"
 
 #define ARRAY_LEN(arr) (sizeof(arr) / sizeof(arr[0]))
@@ -30,10 +34,13 @@ struct ConfigOption {
  *Config options and default values
  */
 bool configFullscreen            = false;
+
+#ifndef TARGET_N3DS
 // Keyboard mappings (scancode values)
 unsigned int configKeyA          = 0x26;
 unsigned int configKeyB          = 0x33;
 unsigned int configKeyStart      = 0x39;
+unsigned int configKeyL          = 0xE1;
 unsigned int configKeyR          = 0x36;
 unsigned int configKeyZ          = 0x25;
 unsigned int configKeyCUp        = 0x148;
@@ -44,6 +51,22 @@ unsigned int configKeyStickUp    = 0x11;
 unsigned int configKeyStickDown  = 0x1F;
 unsigned int configKeyStickLeft  = 0x1E;
 unsigned int configKeyStickRight = 0x20;
+#else
+unsigned int configKeyA          = KEY_A | KEY_Y;
+unsigned int configKeyB          = KEY_B | KEY_X;
+unsigned int configKeyStart      = KEY_START;
+unsigned int configKeyL          = KEY_SELECT;
+unsigned int configKeyR          = KEY_L;
+unsigned int configKeyZ          = KEY_R;
+unsigned int configKeyCUp        = KEY_DUP | KEY_CSTICK_UP;
+unsigned int configKeyCDown      = KEY_DDOWN | KEY_CSTICK_DOWN;
+unsigned int configKeyCLeft      = KEY_DLEFT | KEY_CSTICK_LEFT;
+unsigned int configKeyCRight     = KEY_DRIGHT | KEY_CSTICK_RIGHT;
+unsigned int configKeyStickUp    = 0;
+unsigned int configKeyStickDown  = 0;
+unsigned int configKeyStickLeft  = 0;
+unsigned int configKeyStickRight = 0;
+#endif
 
 
 static const struct ConfigOption options[] = {
@@ -51,16 +74,19 @@ static const struct ConfigOption options[] = {
     {.name = "key_a",          .type = CONFIG_TYPE_UINT, .uintValue = &configKeyA},
     {.name = "key_b",          .type = CONFIG_TYPE_UINT, .uintValue = &configKeyB},
     {.name = "key_start",      .type = CONFIG_TYPE_UINT, .uintValue = &configKeyStart},
+    {.name = "key_l",          .type = CONFIG_TYPE_UINT, .uintValue = &configKeyL},
     {.name = "key_r",          .type = CONFIG_TYPE_UINT, .uintValue = &configKeyR},
     {.name = "key_z",          .type = CONFIG_TYPE_UINT, .uintValue = &configKeyZ},
     {.name = "key_cup",        .type = CONFIG_TYPE_UINT, .uintValue = &configKeyCUp},
     {.name = "key_cdown",      .type = CONFIG_TYPE_UINT, .uintValue = &configKeyCDown},
     {.name = "key_cleft",      .type = CONFIG_TYPE_UINT, .uintValue = &configKeyCLeft},
     {.name = "key_cright",     .type = CONFIG_TYPE_UINT, .uintValue = &configKeyCRight},
+#ifndef TARGET_N3DS
     {.name = "key_stickup",    .type = CONFIG_TYPE_UINT, .uintValue = &configKeyStickUp},
     {.name = "key_stickdown",  .type = CONFIG_TYPE_UINT, .uintValue = &configKeyStickDown},
     {.name = "key_stickleft",  .type = CONFIG_TYPE_UINT, .uintValue = &configKeyStickLeft},
     {.name = "key_stickright", .type = CONFIG_TYPE_UINT, .uintValue = &configKeyStickRight},
+#endif
 };
 
 // Reads an entire line from a file (excluding the newline character) and returns an allocated string
