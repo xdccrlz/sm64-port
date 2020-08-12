@@ -762,6 +762,13 @@ static void gfx_citro3d_draw_triangles(float buf_vbo[], size_t buf_vbo_len, size
         renderFog(buf_vbo, buf_vbo_len, buf_vbo_num_tris);
 }
 
+static bool sIs2D;
+
+static void gfx_citro3d_is_2d(bool is_2d)
+{
+    sIs2D = is_2d;
+}
+
 static void gfx_citro3d_draw_triangles_helper(float buf_vbo[], size_t buf_vbo_len, size_t buf_vbo_num_tris)
 {
     // reset model and projections
@@ -777,18 +784,23 @@ static void gfx_citro3d_draw_triangles_helper(float buf_vbo[], size_t buf_vbo_le
     int prev_sBufIdx = sBufIdx;
 
     float iod = gSliderLevel;
-    float focalLen = 3.f; // 2.2f seems about right
+    float focalLen = 1.9f; // seems about right?
+
+    // bool is2dTriangle = buf_vbo_num_tris <= 2; // too naive
 
     if (gSliderLevel > 0.0f)
     {
-        Mtx_PerspStereoTilt(&projLeft, 53.0f*M_TAU/360.0f, 1.0f , 0.1f, 10.0f, -iod, focalLen, false);
-        // hacks
-        (&projLeft)->r[2].z = 1.0f;
-        (&projLeft)->r[3].w = 1.0f;
-        C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, uLoc_projection, &projLeft);
-        // undo the raotation applied by tilt
-        Mtx_RotateZ(&modelView, 0.25f*M_TAU, true);
-        C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, uLoc_modelView, &modelView);
+        if (!sIs2D)
+        {
+            Mtx_PerspStereoTilt(&projLeft, 53.0f*M_TAU/360.0f, 1.0f , 0.1f, 10.0f, -iod, focalLen, false);
+            // hacks
+            (&projLeft)->r[2].z = 1.0f;
+            (&projLeft)->r[3].w = 1.0f;
+            C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, uLoc_projection, &projLeft);
+            // undo the raotation applied by tilt
+            Mtx_RotateZ(&modelView, 0.25f*M_TAU, true);
+            C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, uLoc_modelView, &modelView);
+        }
     }
 #endif
     gfx_citro3d_draw_triangles(buf_vbo, buf_vbo_len, buf_vbo_num_tris);
@@ -801,11 +813,14 @@ static void gfx_citro3d_draw_triangles_helper(float buf_vbo[], size_t buf_vbo_le
         sBufIdx = prev_sBufIdx;
 
         C3D_FrameDrawOn(gTargetRight);
-        Mtx_PerspStereoTilt(&projRight, 53.0f*M_TAU/360.0f, 1.0f, 0.1f, 10.0f, iod, focalLen, false);
-        // hacks
-        (&projRight)->r[2].z = 1.0f;
-        (&projRight)->r[3].w = 1.0f;
-        C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, uLoc_projection, &projRight);
+        if (!sIs2D)
+        {
+            Mtx_PerspStereoTilt(&projRight, 53.0f*M_TAU/360.0f, 1.0f, 0.1f, 10.0f, iod, focalLen, false);
+            // hacks
+            (&projRight)->r[2].z = 1.0f;
+            (&projRight)->r[3].w = 1.0f;
+            C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, uLoc_projection, &projRight);
+        }
         gfx_citro3d_draw_triangles(buf_vbo, buf_vbo_len, buf_vbo_num_tris);
     }
 #endif
@@ -892,7 +907,8 @@ struct GfxRenderingAPI gfx_citro3d_api = {
     gfx_citro3d_on_resize,
     gfx_citro3d_start_frame,
     gfx_citro3d_end_frame,
-    gfx_citro3d_finish_render
+    gfx_citro3d_finish_render,
+    gfx_citro3d_is_2d
 };
 
 #endif
