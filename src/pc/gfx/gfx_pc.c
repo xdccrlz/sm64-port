@@ -153,24 +153,18 @@ static size_t buf_vbo_num_tris;
 static struct GfxWindowManagerAPI *gfx_wapi;
 static struct GfxRenderingAPI *gfx_rapi;
 
-#include <time.h>
-static unsigned long get_time(void) {
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (unsigned long)ts.tv_sec * 1000000 + ts.tv_nsec / 1000;
+#ifdef TARGET_N3DS
+static void gfx_set_is_2d(bool is2d)
+{
+    gfx_rapi->set_is_2d(is2d);
 }
+#endif
 
 static void gfx_flush(void) {
     if (buf_vbo_len > 0) {
-        int num = buf_vbo_num_tris;
-        unsigned long t0 = get_time();
         gfx_rapi->draw_triangles(buf_vbo, buf_vbo_len, buf_vbo_num_tris);
         buf_vbo_len = 0;
         buf_vbo_num_tris = 0;
-        unsigned long t1 = get_time();
-        /*if (t1 - t0 > 1000) {
-            printf("f: %d %d\n", num, (int)(t1 - t0));
-        }*/
     }
 }
 
@@ -457,7 +451,6 @@ static void import_texture(int tile) {
         return;
     }
 
-    int t0 = get_time();
     if (fmt == G_IM_FMT_RGBA) {
         if (siz == G_IM_SIZ_16b) {
             import_texture_rgba16(tile);
@@ -495,8 +488,6 @@ static void import_texture(int tile) {
     } else {
         abort();
     }
-    int t1 = get_time();
-    //printf("Time diff: %d\n", t1 - t0);
 }
 
 static void gfx_normalize_vector(float v[3]) {
@@ -693,7 +684,7 @@ static void gfx_sp_vertex(size_t n_vertices, size_t dest_index, const Vtx *verti
     }
 }
 
-static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx, bool is_2d) {
+static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx) {
     struct LoadedVertex *v1 = &rsp.loaded_vertices[vtx1_idx];
     struct LoadedVertex *v2 = &rsp.loaded_vertices[vtx2_idx];
     struct LoadedVertex *v3 = &rsp.loaded_vertices[vtx3_idx];
@@ -731,8 +722,6 @@ static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx, bo
                 return;
         }
     }
-
-    gfx_rapi->set_is_2d(is_2d);
 
     bool depth_test = (rsp.geometry_mode & G_ZBUFFER) == G_ZBUFFER;
     if (depth_test != rendering_state.depth_test) {
@@ -1233,8 +1222,8 @@ static void gfx_draw_rectangle(int32_t ulx, int32_t uly, int32_t lrx, int32_t lr
     rdp.viewport_or_scissor_changed = true;
     rsp.geometry_mode = 0;
 
-    gfx_sp_tri1(MAX_VERTICES + 0, MAX_VERTICES + 1, MAX_VERTICES + 3, true);
-    gfx_sp_tri1(MAX_VERTICES + 1, MAX_VERTICES + 2, MAX_VERTICES + 3, true);
+    gfx_sp_tri1(MAX_VERTICES + 0, MAX_VERTICES + 1, MAX_VERTICES + 3);
+    gfx_sp_tri1(MAX_VERTICES + 1, MAX_VERTICES + 2, MAX_VERTICES + 3);
 
     rsp.geometry_mode = geometry_mode_saved;
     rdp.viewport = viewport_saved;
@@ -1420,17 +1409,17 @@ static void gfx_run_dl(Gfx* cmd) {
 #endif
             case (uint8_t)G_TRI1:
 #ifdef F3DEX_GBI_2
-                gfx_sp_tri1(C0(16, 8) / 2, C0(8, 8) / 2, C0(0, 8) / 2, false);
+                gfx_sp_tri1(C0(16, 8) / 2, C0(8, 8) / 2, C0(0, 8) / 2);
 #elif defined(F3DEX_GBI) || defined(F3DLP_GBI)
-                gfx_sp_tri1(C1(16, 8) / 2, C1(8, 8) / 2, C1(0, 8) / 2, false);
+                gfx_sp_tri1(C1(16, 8) / 2, C1(8, 8) / 2, C1(0, 8) / 2);
 #else
-                gfx_sp_tri1(C1(16, 8) / 10, C1(8, 8) / 10, C1(0, 8) / 10, false);
+                gfx_sp_tri1(C1(16, 8) / 10, C1(8, 8) / 10, C1(0, 8) / 10);
 #endif
                 break;
 #if defined(F3DEX_GBI) || defined(F3DLP_GBI)
             case (uint8_t)G_TRI2:
-                gfx_sp_tri1(C0(16, 8) / 2, C0(8, 8) / 2, C0(0, 8) / 2, false);
-                gfx_sp_tri1(C1(16, 8) / 2, C1(8, 8) / 2, C1(0, 8) / 2, false);
+                gfx_sp_tri1(C0(16, 8) / 2, C0(8, 8) / 2, C0(0, 8) / 2);
+                gfx_sp_tri1(C1(16, 8) / 2, C1(8, 8) / 2, C1(0, 8) / 2);
                 break;
 #endif
             case (uint8_t)G_SETOTHERMODE_L:
@@ -1545,6 +1534,12 @@ static void gfx_run_dl(Gfx* cmd) {
             case G_SETCIMG:
                 gfx_dp_set_color_image(C0(21, 3), C0(19, 2), C0(0, 11), seg_addr(cmd->words.w1));
                 break;
+#ifdef TARGET_N3DS
+            case G_SPECIAL_1:
+                //gfx_dp_set_color_image(C0(21, 3), C0(19, 2), C0(0, 11), seg_addr(cmd->words.w1));
+                gfx_set_is_2d(cmd->words.w1 == 1);
+                break;
+#endif
         }
         ++cmd;
     }
@@ -1625,12 +1620,9 @@ void gfx_run(Gfx *commands) {
     }
     dropped_frame = false;
 
-    double t0 = gfx_wapi->get_time();
     gfx_rapi->start_frame();
     gfx_run_dl(commands);
     gfx_flush();
-    double t1 = gfx_wapi->get_time();
-    //printf("Process %f %f\n", t1, t1 - t0);
     gfx_rapi->end_frame();
     gfx_wapi->swap_buffers_begin();
 }

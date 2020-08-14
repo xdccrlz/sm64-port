@@ -447,6 +447,9 @@ void render_hud(void) {
         create_dl_ortho_matrix();
 #endif
 
+#ifdef TARGET_N3DS
+    gDPSet2d(gDisplayListHead++, 1);
+#endif
         if (gCurrentArea != NULL && gCurrentArea->camera->mode == CAMERA_MODE_INSIDE_CANNON) {
             render_hud_cannon_reticle();
         }

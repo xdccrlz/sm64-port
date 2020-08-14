@@ -2026,6 +2026,10 @@ void print_peach_letter_message(void) {
 
     create_dl_translation_matrix(MENU_MTX_PUSH, 97.0f, 118.0f, 0);
 
+#ifdef TARGET_N3DS
+    gDPSet2d(gDisplayListHead++, 1);
+#endif
+
     gDPSetEnvColor(gDisplayListHead++, 255, 255, 255, gCutsceneMsgFade);
     gSPDisplayList(gDisplayListHead++, castle_grounds_seg7_dl_0700EA58);
     gSPPopMatrix(gDisplayListHead++, G_MTX_MODELVIEW);

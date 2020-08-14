@@ -8,6 +8,7 @@ C3D_RenderTarget *gTarget, *gTargetRight;
 float gSliderLevel;
 
 Gfx3DSMode gGfx3DSMode;
+PrintConsole gConsole;
 
 static bool checkN3DS()
 {
@@ -24,7 +25,8 @@ static void gfx_3ds_init(UNUSED const char *game_name, UNUSED bool start_in_full
         osSetSpeedupEnable(true);
 
     gfxInitDefault();
-    consoleInit(GFX_BOTTOM, NULL);
+    consoleSelect(consoleInit(GFX_BOTTOM, &gConsole));
+
     C3D_Init(C3D_DEFAULT_CMDBUF_SIZE);
 
     bool useAA = false;

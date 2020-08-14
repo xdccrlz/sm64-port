@@ -1,9 +1,11 @@
+#ifdef TARGET_N3DS
+
 #ifndef GFX_3DS_H
 #define GFX_3DS_H
 
 #include "gfx_window_manager_api.h"
 
-#define N3DS_USE_ANTIALIASING
+// #define N3DS_USE_ANTIALIASING
 // #define N3DS_USE_WIDE_800PX
 
 #ifndef _LANGUAGE_C
@@ -40,6 +42,7 @@
 
 extern C3D_RenderTarget *gTarget, *gTargetRight;
 extern float gSliderLevel;
+extern PrintConsole gConsole;
 
 typedef enum
 {
@@ -52,4 +55,5 @@ typedef enum
 extern struct GfxWindowManagerAPI gfx_3ds;
 extern Gfx3DSMode gGfx3DSMode;
 
+#endif
 #endif

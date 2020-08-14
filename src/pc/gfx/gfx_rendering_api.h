@@ -30,7 +30,9 @@ struct GfxRenderingAPI {
     void (*start_frame)(void);
     void (*end_frame)(void);
     void (*finish_render)(void);
+#ifdef TARGET_N3DS
     void (*set_is_2d)(bool is_2d);
+#endif
 };
 
 #endif

@@ -303,6 +303,9 @@ void print_act_selector_strings(void) {
     currLevelName = segmented_to_virtual(levelNameTbl[gCurrCourseNum - 1]);
 #endif
 
+#ifdef TARGET_N3DS
+    gDPSet2d(gDisplayListHead++, 1);
+#endif
     // Print the coin highscore.
     gSPDisplayList(gDisplayListHead++, dl_rgba16_text_begin);
     gDPSetEnvColor(gDisplayListHead++, 255, 255, 255, 255);

@@ -362,6 +362,9 @@ void play_transition_after_delay(s16 transType, s16 time, u8 red, u8 green, u8 b
 }
 
 void render_game(void) {
+#ifdef TARGET_N3DS
+    gDPSet2d(gDisplayListHead++, 0); // reset 2d mode
+#endif
     if (gCurrentArea != NULL && !gWarpTransition.pauseRendering) {
         geo_process_root(gCurrentArea->unk04, D_8032CE74, D_8032CE78, gFBSetColor);
 
