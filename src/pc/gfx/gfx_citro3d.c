@@ -881,7 +881,7 @@ static void gfx_citro3d_on_resize(void)
 
 static void gfx_citro3d_end_frame(void)
 {
-    float target_fps = 60.0f; // 30 FPS ?
+    float target_fps = 30.0f;
 
     C3D_FrameEnd(0);
     if (C3D_GetProcessingTime() < 1000.0f / target_fps)
