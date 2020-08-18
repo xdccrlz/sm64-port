@@ -3,10 +3,11 @@
 This repo does **not** include all assets necessary for compiling the game.
 A prior copy of the game is required to extract the assets.
 
-## Changes vs. vanilla 3DS port
+## Changes vs. Vanilla 3DS Port
 
  - Based off [Refresh 11](https://github.com/sm64-port/sm64-port/commit/9214dddabcce4723d9b6cda2ebccbac209f6447d)
  - Configurable controls via `sm64config.txt`
+     - Use [this](https://codepen.io/benoitcaron/full/abNZrbP) online editor from [BenoitCaron](https://github.com/BenoitCaron).
  - GFX_POOL_SIZE [fix](https://github.com/aboood40091/sm64-port/commit/6ae4f4687ed234291ac1e572b75d65191ca9f364) (support 60 FPS on 32bit platforms)
  - Mini-menu (tap touch-screen to trigger)
      - Enable/disable AA
@@ -17,6 +18,10 @@ A prior copy of the game is required to extract the assets.
 ## Building
 
 After building, either install the `.cia` if you made one, or copy over the `sm64.us.f3dex2e.3dsx` into the `/3ds` directory on your SD card and load via The Homebrew Launcher.
+
+  - [Docker](#docker)
+  - [Linux / WSL (ubuntu)](#linux--wsl-ubuntu)
+  - [Windows (MSYS2)](#windows-msys2)
 
 ### Docker
 
@@ -35,7 +40,7 @@ cd sm64-port
 **Copy in baserom.XX.z64:**
 
 ```sh
-cp /path/to/your/baserom.XX.z64 .
+cp /path/to/your/baserom.XX.z64 . # change 'XX' to 'us', 'eu' or 'jp' as appropriate
 ```
 
 **Checkout this branch:**
@@ -106,6 +111,98 @@ export DEVKITARM=/opt/devkitpro/devkitARM
 export DEVKITPPC=/opt/devkitpro/devkitPPC
 
 make -j4
+```
+
+### Windows (MSYS2)
+
+WSL is the preferred route, but you can also use MSYS2 to compile.
+
+**Get MSYS2:**
+
+Navigate to https://www.msys2.org/ and download the installer.
+
+**Install and Run MSYS2:**
+
+```
+Next, Next, Next, Finish (keep the box checked to run now).
+```
+
+**Add keyserver for package validation:**
+
+```sh
+pacman-key --recv BC26F752D25B92CE272E0F44F7FD5492264BB9D0 --keyserver keyserver.ubuntu.com
+pacman-key --lsign BC26F752D25B92CE272E0F44F7FD5492264BB9D0
+```
+
+**Add DevKitPro keyring:**
+
+```sh
+pacman -U --noconfirm https://downloads.devkitpro.org/devkitpro-keyring.pkg.tar.xz
+```
+
+**Add DevKitPro package repositories:**
+
+```sh
+cat <<EOF >> /etc/pacman.conf
+[dkp-libs]
+Server = https://downloads.devkitpro.org/packages
+[dkp-windows]
+Server = https://downloads.devkitpro.org/packages/windows
+EOF
+```
+
+**Update dependencies:**
+
+```sh
+pacman -Syu --noconfirm
+```
+
+MSYS2 will likely close itself when done, find `MSYS2 MinGW 64bit` in your Start Menu and open again.
+
+**Install Dependencies:**
+
+```sh
+pacman -S 3ds-dev git make python3 mingw-w64-x86_64-gcc --noconfirm
+```
+
+**Setup Environment Variables:**
+
+```sh
+export PATH=$PATH:/opt/devkitpro/tools/bin
+export DEVKITPRO=/opt/devkitpro
+export DEVKITARM=/opt/devkitpro/devkitARM
+export DEVKITPPC=/opt/devkitpro/devkitPPC
+```
+
+**Clone Repository:**
+
+```sh
+git clone https://github.com/mkst/sm64-port.git
+```
+
+**Nagivate into freshly checked out repo:**
+
+```sh
+cd sm64-port
+```
+
+**Copy in baserom.XX.z64:**
+
+This assumes that you have create the directory `c:\temp` via Windows Explorer and copied the `baserom.XX.z64` to it.
+```sh
+cp /c/temp/baserom.XX.z64 . # change 'XX' to 'us', 'eu' or 'jp' as appropriate
+```
+
+**Checkout this branch:**
+
+```sh
+git checkout 3ds-port
+```
+
+**Compile:**
+
+```sh
+make VERSION=us --jobs 4 # change 'us' to 'eu' or 'jp' as appropriate
 ```
 
 ### Other
