@@ -10,6 +10,6 @@ struct gfx_configuration
    bool useWide;
 };
 
-int menu(struct gfx_configuration *config);
+int display_menu(struct gfx_configuration *config);
 
 #endif

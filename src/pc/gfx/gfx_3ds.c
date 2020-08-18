@@ -9,12 +9,14 @@ C3D_RenderTarget *gTarget;
 C3D_RenderTarget *gTargetRight;
 float gSliderLevel;
 
-struct gfx_configuration gfx_config = {0};
+struct gfx_configuration gfx_config = {false, false};
 
 Gfx3DSMode gGfx3DSMode;
 PrintConsole gConsole;
 
 bool menu_mode;
+
+u8 n3ds_model = 0;
 
 static bool checkN3DS()
 {
@@ -47,7 +49,7 @@ static void init_top_screens()
     C3D_Init(C3D_DEFAULT_CMDBUF_SIZE);
 
     bool useAA = gfx_config.useAA;
-    bool useWide =  gfx_config.useWide;
+    bool useWide =  gfx_config.useWide && n3ds_model != 3; // old 2DS does not support 800px
 
     u32 transferFlags =
         GX_TRANSFER_FLIP_VERT(0) |
@@ -104,9 +106,15 @@ static void gfx_3ds_init(UNUSED const char *game_name, UNUSED bool start_in_full
     gfxInitDefault();
     consoleSelect(consoleInit(GFX_BOTTOM, &gConsole));
 
-    // u8 model = 0xFF;
-    // u8 res = CFGU_GetSystemModel(&model);
-    // printf("Result: %u, Your xDS Model is: %u\n", res, model);
+    Result rc = cfguInit();
+    if (R_SUCCEEDED(rc))
+    {
+        u8 model;
+        rc = CFGU_GetSystemModel(&model);
+        if (R_SUCCEEDED(rc))
+            n3ds_model = model;
+        cfguExit();
+    }
 
     init_top_screens();
 }
@@ -133,7 +141,7 @@ static void gfx_3ds_main_loop(void (*run_one_game_iter)(void))
         }
         else
         {
-            int res = menu(&gfx_config);
+            int res = display_menu(&gfx_config);
             if (res < 0)
                 break;
             if (res > 0)

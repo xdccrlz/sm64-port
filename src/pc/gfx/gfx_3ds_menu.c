@@ -6,12 +6,12 @@
 
 int selected = 0;
 
-int menu(struct gfx_configuration *config)
+int display_menu(struct gfx_configuration *config)
 {
     int res = 0;
 
     consoleClear();
-	hidScanInput();
+    hidScanInput();
 
     // draw menu
     printf("\x1b[1;1HSM64 3DS Configuration\n");
