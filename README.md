@@ -14,6 +14,8 @@ A prior copy of the game is required to extract the assets.
      - Enable/disable 800px mode
      - Exit the game
  - Experimental Stereo 3D support; add build flag `ENABLE_N3DS_3D_MODE=1` to try it out
+ - Support injection of [SMDH](https://www.3dbrew.org/wiki/SMDH) file into the .3dsx
+     - Create an `icon.smdh` (e.g. with [this](https://usuaris.tinet.cat/mark/smdh_creator/)) and place in the base of this repository before building.
 
 ## Building
 
