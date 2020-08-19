@@ -867,8 +867,7 @@ $(BUILD_DIR)/src/pc/gfx/shader.shbin.o : src/pc/gfx/shader.v.pica
 	$(DEVKITPRO)/tools/bin/bin2s $(BUILD_DIR)/src/pc/gfx/shader.shbin | $(AS) -o $@
 
 3DSXTOOL_ARGS :=
-DUMMY != stat icon.smdh || echo FAIL
-ifneq ($(DUMMY),FAIL)
+ifneq (,$(wildcard ./icon.smdh))
     3DSXTOOL_ARGS := --smdh=icon.smdh
 endif
 $(EXE): $(O_FILES) $(MIO0_FILES:.mio0=.o) $(SOUND_OBJ_FILES) $(ULTRA_O_FILES) $(GODDARD_O_FILES) $(BUILD_DIR)/src/pc/gfx/shader.shbin.o
