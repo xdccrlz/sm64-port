@@ -1535,7 +1535,6 @@ static void gfx_run_dl(Gfx* cmd) {
                 break;
 #ifdef ENABLE_N3DS_3D_MODE
             case G_SPECIAL_1:
-                //gfx_dp_set_color_image(C0(21, 3), C0(19, 2), C0(0, 11), seg_addr(cmd->words.w1));
                 gfx_set_is_2d(cmd->words.w1 == 1);
                 break;
 #endif
@@ -1560,6 +1559,15 @@ void gfx_init(struct GfxWindowManagerAPI *wapi, struct GfxRenderingAPI *rapi, co
     gfx_wapi->init(game_name, start_in_fullscreen);
     gfx_rapi->init();
 
+#ifdef TARGET_N3DS
+    // dimensions won't change on 3DS, so just do this once
+    gfx_wapi->get_dimensions(&gfx_current_dimensions.width, &gfx_current_dimensions.height);
+    if (gfx_current_dimensions.height == 0) {
+        // Avoid division by zero
+        gfx_current_dimensions.height = 1;
+    }
+    gfx_current_dimensions.aspect_ratio = (float)gfx_current_dimensions.width / (float)gfx_current_dimensions.height;
+#endif
     // Used in the 120 star TAS
     static uint32_t precomp_shaders[] = {
         0x01200200,
@@ -1588,7 +1596,7 @@ void gfx_init(struct GfxWindowManagerAPI *wapi, struct GfxRenderingAPI *rapi, co
         0x09200200,
         0x0920038d,
         0x09200045,
-        0x09200a00 // thanks abrood!
+        0x09200a00 // thanks aboood!
     };
     for (size_t i = 0; i < sizeof(precomp_shaders) / sizeof(uint32_t); i++) {
         gfx_lookup_or_create_shader_program(precomp_shaders[i]);
@@ -1601,18 +1609,18 @@ struct GfxRenderingAPI *gfx_get_current_rendering_api(void) {
 
 void gfx_start_frame(void) {
     gfx_wapi->handle_events();
+#ifndef TARGET_N3DS
     gfx_wapi->get_dimensions(&gfx_current_dimensions.width, &gfx_current_dimensions.height);
     if (gfx_current_dimensions.height == 0) {
         // Avoid division by zero
         gfx_current_dimensions.height = 1;
     }
     gfx_current_dimensions.aspect_ratio = (float)gfx_current_dimensions.width / (float)gfx_current_dimensions.height;
+#endif
 }
 
 void gfx_run(Gfx *commands) {
     gfx_sp_reset();
-
-    //puts("New frame");
 
     if (!gfx_wapi->start_frame()) {
         dropped_frame = true;
