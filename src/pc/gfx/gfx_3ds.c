@@ -95,6 +95,12 @@ static void init_top_screens()
         gGfx3DSMode = GFX_3DS_MODE_WIDE;
     else
         gGfx3DSMode = GFX_3DS_MODE_WIDE_AA_12;
+
+    // TODO: refactor; this is (also) set in gfx_citro3d_init,
+    C3D_CullFace(GPU_CULL_NONE);
+    C3D_DepthMap(true, -1.0f, 0);
+    C3D_DepthTest(false, GPU_LEQUAL, GPU_WRITE_ALL);
+    C3D_AlphaTest(true, GPU_GREATER, 0x00);
 }
 
 
