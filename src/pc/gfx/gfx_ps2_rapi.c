@@ -86,9 +86,11 @@ static struct Texture *last_tex;
 static bool z_test = true;
 static bool z_mask = false;
 static bool z_decal = false;
+
+static bool a_test = false;
 static bool do_blend = false;
 
-static const uint64_t c_white = GS_SETREG_RGBAQ(0x80, 0x80, 0x80, 0x00, 0x00);
+static const uint64_t c_white = GS_SETREG_RGBAQ(0x80, 0x80, 0x80, 0x80, 0x00);
 
 static bool gfx_ps2_z_is_from_0_to_1(void) {
     return true;
@@ -100,6 +102,7 @@ static void gfx_ps2_unload_shader(struct ShaderProgram *old_prg) {
 
 static void gfx_ps2_load_shader(struct ShaderProgram *new_prg) {
     cur_shader = new_prg;
+    a_test = cur_shader->alpha_test; // remember this for next clear
 }
 
 static struct ShaderProgram *gfx_ps2_create_and_load_new_shader(uint32_t shader_id) {
@@ -323,8 +326,8 @@ static void gsKit_prim_triangle_goraud_texture_3d_st(GSGLOBAL *gsGlobal, GSTEXTU
 static inline void update_tests(const bool atest, const int ztest) {
     if (atest) {
         gs_global->Test->ATE = 1;
-        gs_global->Test->ATST = 5; // ATEST_METHOD_LESS
-        gs_global->Test->AREF = 0x50;
+        gs_global->Test->ATST = 6; // ATEST_METHOD_GREATER
+        gs_global->Test->AREF = 0x40;
     } else {
         gs_global->Test->ATE = 0;
         gs_global->Test->ATST = 1; // ATEST_METHOD_ALLPASS
@@ -344,6 +347,31 @@ static inline void update_tests(const bool atest, const int ztest) {
         gs_global->Test->ZTE,  gs_global->Test->ZTST
     );
     *p_data++ = GS_TEST_1 + gs_global->PrimContext;
+}
+
+static void draw_clear(const u64 color) {
+    const bool old_zmask = z_mask;
+    const bool old_tests = z_test || a_test;
+
+    if (old_zmask) gfx_ps2_set_depth_mask(true); // write Z on clear
+    if (old_tests) update_tests(0, 1); // no alpha test, zpass=ALWAYS
+
+    u8 strips = gs_global->Width >> 6;
+    const u8 remain = gs_global->Width & 63;
+
+    u32 pos = 0;
+
+    strips++;
+    while (strips--) {
+        gsKit_prim_sprite(gs_global, pos, 0, pos + 64, gs_global->Height, 0, color);
+        pos += 64;
+    }
+
+    if (remain)
+        gsKit_prim_sprite(gs_global, pos, 0, remain + pos, gs_global->Height, 0, color);
+
+    if (old_zmask) gfx_ps2_set_depth_mask(false); // mask Z again
+    if (old_tests) update_tests(a_test, z_test + (z_test && z_decal) + 1); // restore old tests
 }
 
 static inline void draw_triangles_tex_col(float buf_vbo[], const size_t buf_vbo_num_tris, const size_t vtx_stride, const size_t tri_stride) {
@@ -431,8 +459,9 @@ static inline void draw_triangles_tex_col_decal(float buf_vbo[], const size_t bu
     draw_triangles_col(buf_vbo, buf_vbo_num_tris, vtx_stride, tri_stride, 2);
 
     // alpha test on, blending on, ztest to GEQUAL
-    gfx_ps2_set_use_alpha(true);
-    update_tests(cur_shader->alpha_test, 2);
+    const bool old_blend = do_blend;
+    if (!old_blend) gfx_ps2_set_use_alpha(true);
+    update_tests(a_test, 2);
 
     // draw texture with blending on top, don't need to transform this time
 
@@ -459,6 +488,10 @@ static inline void draw_triangles_tex_col_decal(float buf_vbo[], const size_t bu
             c0.word, c1.word, c2.word
         );
     }
+
+    // restore old state
+    if (!old_blend) gfx_ps2_set_use_alpha(false);
+    update_tests(a_test, z_test + (z_test && z_decal) + 1);
 }
 
 static void gfx_ps2_draw_triangles(float buf_vbo[], size_t buf_vbo_len, size_t buf_vbo_num_tris) {
@@ -466,7 +499,7 @@ static void gfx_ps2_draw_triangles(float buf_vbo[], size_t buf_vbo_len, size_t b
     const size_t tri_stride = vtx_stride * 3;
 
     const bool zge = z_test && z_decal;
-    update_tests(cur_shader->alpha_test, z_test + zge + 1);
+    update_tests(a_test, z_test + zge + 1);
 
     if (cur_shader->used_textures[0]) {
         gsKit_set_clamp(gs_global, cur_tex[0]->clamp_s);
@@ -494,10 +527,7 @@ static void gfx_ps2_on_resize(void) {
 }
 
 static void gfx_ps2_start_frame(void) {
-    const bool old_zmask = z_mask;
-    if (old_zmask) gfx_ps2_set_depth_mask(true);
-    gsKit_clear(gs_global, c_white);
-    if (old_zmask) gfx_ps2_set_depth_mask(false);
+    draw_clear(c_white);
 }
 
 static void gfx_ps2_end_frame(void) {
