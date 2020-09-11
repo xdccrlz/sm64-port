@@ -122,10 +122,10 @@ s32 osEepromProbe(UNUSED OSMesgQueue *mq) {
 }
 
 s32 osEepromLongRead(UNUSED OSMesgQueue *mq, u8 address, u8 *buffer, int nbytes) {
-    u8 content[512];
+    u8 content[512] = {0};
     s32 ret = -1;
 
-#ifdef TARGET_WEB
+#if defined(TARGET_WEB)
     if (EM_ASM_INT({
         var s = localStorage.sm64_save_file;
         if (s && s.length === 684) {
@@ -145,6 +145,7 @@ s32 osEepromLongRead(UNUSED OSMesgQueue *mq, u8 address, u8 *buffer, int nbytes)
         memcpy(buffer, content + address * 8, nbytes);
         ret = 0;
     }
+#elif defined(TARGET_PS2)
 #else
     FILE *fp = fopen("sm64_save_file.bin", "rb");
     if (fp == NULL) {
@@ -166,7 +167,7 @@ s32 osEepromLongWrite(UNUSED OSMesgQueue *mq, u8 address, u8 *buffer, int nbytes
     }
     memcpy(content + address * 8, buffer, nbytes);
 
-#ifdef TARGET_WEB
+#if defined(TARGET_WEB)
     EM_ASM({
         var str = "";
         for (var i = 0; i < 512; i++) {
@@ -175,6 +176,8 @@ s32 osEepromLongWrite(UNUSED OSMesgQueue *mq, u8 address, u8 *buffer, int nbytes
         localStorage.sm64_save_file = btoa(str);
     }, content);
     s32 ret = 0;
+#elif defined(TARGET_PS2)
+    s32 ret = -1;
 #else
     FILE* fp = fopen("sm64_save_file.bin", "wb");
     if (fp == NULL) {

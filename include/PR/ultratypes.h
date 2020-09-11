@@ -8,15 +8,25 @@
 #define TRUE 1
 #define FALSE 0
 
+#ifdef TARGET_PS2
+
+#include <stddef.h>
+#include <stdint.h>
+#include <sys/types.h>
+
+// this file also defines shorthands such as
+// s8, u16, etc.
+// Jesus wept.
+#include <tamtypes.h>
+
+#else
+
 typedef signed char            s8;
 typedef unsigned char          u8;
 typedef signed short int       s16;
 typedef unsigned short int     u16;
 typedef signed int             s32;
 typedef unsigned int           u32;
-
-typedef float  f32;
-typedef double f64;
 
 #ifdef TARGET_N64
 typedef signed long long int   s64;
@@ -42,5 +52,11 @@ typedef volatile s8   vs8;
 typedef volatile s16 vs16;
 typedef volatile s32 vs32;
 typedef volatile s64 vs64;
+
+#endif // TARGET_PS2
+
+typedef float  f32;
+typedef double f64;
+
 
 #endif

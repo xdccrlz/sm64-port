@@ -17,12 +17,14 @@
 #include "gfx/gfx_dxgi.h"
 #include "gfx/gfx_glx.h"
 #include "gfx/gfx_sdl.h"
+#include "gfx/gfx_ps2.h"
 
 #include "audio/audio_api.h"
 #include "audio/audio_wasapi.h"
 #include "audio/audio_pulse.h"
 #include "audio/audio_alsa.h"
 #include "audio/audio_sdl.h"
+#include "audio/audio_ps2.h"
 #include "audio/audio_null.h"
 
 #include "controller/controller_keyboard.h"
@@ -67,8 +69,6 @@ void send_display_list(struct SPTask *spTask) {
     gfx_run((Gfx *)spTask->task.t.data_ptr);
 }
 
-#define printf
-
 #ifdef VERSION_EU
 #define SAMPLES_HIGH 656
 #define SAMPLES_LOW 640
@@ -80,7 +80,8 @@ void send_display_list(struct SPTask *spTask) {
 void produce_one_frame(void) {
     gfx_start_frame();
     game_loop_one_iteration();
-    
+
+#ifndef TARGET_PS2
     int samples_left = audio_api->buffered();
     u32 num_audio_samples = samples_left < audio_api->get_desired_buffered() ? SAMPLES_HIGH : SAMPLES_LOW;
     //printf("Audio samples: %d %u\n", samples_left, num_audio_samples);
@@ -94,7 +95,8 @@ void produce_one_frame(void) {
     }
     //printf("Audio samples before submitting: %d\n", audio_api->buffered());
     audio_api->play((u8 *)audio_buffer, 2 * num_audio_samples * 4);
-    
+#endif
+
     gfx_end_frame();
 }
 
@@ -158,6 +160,9 @@ void main_func(void) {
 #elif defined(ENABLE_DX11)
     rendering_api = &gfx_direct3d11_api;
     wm_api = &gfx_dxgi_api;
+#elif defined(TARGET_PS2)
+    rendering_api = &gfx_ps2_rapi;
+    wm_api = &gfx_ps2_wapi;
 #elif defined(ENABLE_OPENGL)
     rendering_api = &gfx_opengl_api;
     #if defined(__linux__) || defined(__BSD__)
@@ -171,7 +176,7 @@ void main_func(void) {
     
     wm_api->set_fullscreen_changed_callback(on_fullscreen_changed);
     wm_api->set_keyboard_callbacks(keyboard_on_key_down, keyboard_on_key_up, keyboard_on_all_keys_up);
-    
+
 #if HAVE_WASAPI
     if (audio_api == NULL && audio_wasapi.init()) {
         audio_api = &audio_wasapi;
@@ -190,6 +195,11 @@ void main_func(void) {
 #ifdef TARGET_WEB
     if (audio_api == NULL && audio_sdl.init()) {
         audio_api = &audio_sdl;
+    }
+#endif
+#ifdef TARGET_PS2
+    if (audio_api == NULL && audio_ps2.init()) {
+        audio_api = &audio_ps2;
     }
 #endif
     if (audio_api == NULL) {

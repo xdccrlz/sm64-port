@@ -38,8 +38,57 @@
 #define MAX_LIGHTS 2
 #define MAX_VERTICES 64
 
-struct RGBA {
-    uint8_t r, g, b, a;
+#ifdef TARGET_PS2
+
+// pack colors into 32-bit uints
+#define GFX_PACK_COLORS 1
+// do manual clipping
+#define GFX_MANUAL_CLIPPING 1
+// premultiply XYZ by 1/w
+#define GFX_W_PREMULT 1
+
+#define GFX_COLOR_CONV(x) ((x) >> 1)
+#define GFX_ALPHA_CONV(x) (128 - ((int)(x * 128.f) / 255))
+
+#define GFX_TEXALPHA_CONV(x) (128 - ((int)x * 128 / 255))
+#define GFX_TEXALPHA_BOOL(x) ((x) ? 0x00 : 0x80)
+
+#define GFX_ALPHA_ONE  0x00
+#define GFX_ALPHA_ZERO 0x80
+
+#else
+
+#define GFX_COLOR_CONV(x) ((x) / 255.f)
+#define GFX_ALPHA_CONV(x) ((x) / 255.f)
+
+#define GFX_TEXALPHA_CONV(x) x
+#define GFX_TEXALPHA_BOOL(x) ((x) ? 0xFF : 0x00)
+
+#define GFX_ALPHA_ONE  0xFF
+#define GFX_ALPHA_ZERO 0x00
+
+#endif
+
+#ifdef GFX_W_PREMULT
+# define GFX_OUT_COORD(x) (x * inv_w)
+#else
+# define GFX_OUT_COORD(x) (x)
+#endif
+
+enum {
+    CLIP_NONE   = 0,
+    CLIP_NEAR   = 1,
+    CLIP_FAR    = 2,
+    CLIP_TOP    = 4,
+    CLIP_BOTTOM = 8,
+    CLIP_RIGHT  = 16,
+    CLIP_LEFT   = 32,
+    CLIP_ALL    = 63,
+};
+
+union RGBA {
+    struct { uint8_t r, g, b, a; };
+    uint32_t rgba;
 };
 
 struct XYWidthHeight {
@@ -49,7 +98,7 @@ struct XYWidthHeight {
 struct LoadedVertex {
     float x, y, z, w;
     float u, v;
-    struct RGBA color;
+    union RGBA color;
     uint8_t clip_rej;
 };
 
@@ -125,7 +174,7 @@ static struct RDP {
     uint32_t other_mode_l, other_mode_h;
     uint32_t combine_mode;
     
-    struct RGBA env_color, prim_color, fog_color, fill_color;
+    union RGBA env_color, prim_color, fog_color, fill_color;
     struct XYWidthHeight viewport, scissor;
     bool viewport_or_scissor_changed;
     void *z_buf_address;
@@ -153,11 +202,8 @@ static size_t buf_vbo_num_tris;
 static struct GfxWindowManagerAPI *gfx_wapi;
 static struct GfxRenderingAPI *gfx_rapi;
 
-#include <time.h>
 static unsigned long get_time(void) {
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (unsigned long)ts.tv_sec * 1000000 + ts.tv_nsec / 1000;
+    return 0;
 }
 
 static void gfx_flush(void) {
@@ -324,7 +370,7 @@ static void import_texture_ia4(int tile) {
         rgba32_buf[4*i + 0] = SCALE_3_8(r);
         rgba32_buf[4*i + 1] = SCALE_3_8(g);
         rgba32_buf[4*i + 2] = SCALE_3_8(b);
-        rgba32_buf[4*i + 3] = alpha ? 255 : 0;
+        rgba32_buf[4*i + 3] = GFX_TEXALPHA_BOOL(alpha);
     }
     
     uint32_t width = rdp.texture_tile.line_size_bytes * 2;
@@ -342,10 +388,11 @@ static void import_texture_ia8(int tile) {
         uint8_t r = intensity;
         uint8_t g = intensity;
         uint8_t b = intensity;
+        alpha = SCALE_4_8(alpha);
         rgba32_buf[4*i + 0] = SCALE_4_8(r);
         rgba32_buf[4*i + 1] = SCALE_4_8(g);
         rgba32_buf[4*i + 2] = SCALE_4_8(b);
-        rgba32_buf[4*i + 3] = SCALE_4_8(alpha);
+        rgba32_buf[4*i + 3] = GFX_TEXALPHA_CONV(alpha);
     }
     
     uint32_t width = rdp.texture_tile.line_size_bytes;
@@ -366,7 +413,7 @@ static void import_texture_ia16(int tile) {
         rgba32_buf[4*i + 0] = r;
         rgba32_buf[4*i + 1] = g;
         rgba32_buf[4*i + 2] = b;
-        rgba32_buf[4*i + 3] = alpha;
+        rgba32_buf[4*i + 3] = GFX_TEXALPHA_CONV(alpha);
     }
     
     uint32_t width = rdp.texture_tile.line_size_bytes / 2;
@@ -388,7 +435,7 @@ static void import_texture_i4(int tile) {
         rgba32_buf[4*i + 0] = SCALE_4_8(r);
         rgba32_buf[4*i + 1] = SCALE_4_8(g);
         rgba32_buf[4*i + 2] = SCALE_4_8(b);
-        rgba32_buf[4*i + 3] = 255;
+        rgba32_buf[4*i + 3] = GFX_ALPHA_ONE;
     }
 
     uint32_t width = rdp.texture_tile.line_size_bytes * 2;
@@ -408,7 +455,7 @@ static void import_texture_i8(int tile) {
         rgba32_buf[4*i + 0] = r;
         rgba32_buf[4*i + 1] = g;
         rgba32_buf[4*i + 2] = b;
-        rgba32_buf[4*i + 3] = 255;
+        rgba32_buf[4*i + 3] = GFX_ALPHA_ONE;
     }
 
     uint32_t width = rdp.texture_tile.line_size_bytes;
@@ -432,7 +479,7 @@ static void import_texture_ci4(int tile) {
         rgba32_buf[4*i + 0] = SCALE_5_8(r);
         rgba32_buf[4*i + 1] = SCALE_5_8(g);
         rgba32_buf[4*i + 2] = SCALE_5_8(b);
-        rgba32_buf[4*i + 3] = a ? 255 : 0;
+        rgba32_buf[4*i + 3] = GFX_TEXALPHA_BOOL(a);
     }
     
     uint32_t width = rdp.texture_tile.line_size_bytes * 2;
@@ -454,7 +501,7 @@ static void import_texture_ci8(int tile) {
         rgba32_buf[4*i + 0] = SCALE_5_8(r);
         rgba32_buf[4*i + 1] = SCALE_5_8(g);
         rgba32_buf[4*i + 2] = SCALE_5_8(b);
-        rgba32_buf[4*i + 3] = a ? 255 : 0;
+        rgba32_buf[4*i + 3] = GFX_TEXALPHA_BOOL(a);
     }
     
     uint32_t width = rdp.texture_tile.line_size_bytes;
@@ -674,12 +721,12 @@ static void gfx_sp_vertex(size_t n_vertices, size_t dest_index, const Vtx *verti
         
         // trivial clip rejection
         d->clip_rej = 0;
-        if (x < -w) d->clip_rej |= 1;
-        if (x > w) d->clip_rej |= 2;
-        if (y < -w) d->clip_rej |= 4;
-        if (y > w) d->clip_rej |= 8;
-        if (z < -w) d->clip_rej |= 16;
-        if (z > w) d->clip_rej |= 32;
+        if (x < -w) d->clip_rej |= CLIP_LEFT;
+        if (x >  w) d->clip_rej |= CLIP_RIGHT;
+        if (y < -w) d->clip_rej |= CLIP_BOTTOM;
+        if (y >  w) d->clip_rej |= CLIP_TOP;
+        if (z < -w) d->clip_rej |= CLIP_FAR;
+        if (z >  w) d->clip_rej |= CLIP_NEAR;
         
         d->x = x;
         d->y = y;
@@ -707,100 +754,27 @@ static void gfx_sp_vertex(size_t n_vertices, size_t dest_index, const Vtx *verti
     }
 }
 
-static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx) {
-    struct LoadedVertex *v1 = &rsp.loaded_vertices[vtx1_idx];
-    struct LoadedVertex *v2 = &rsp.loaded_vertices[vtx2_idx];
-    struct LoadedVertex *v3 = &rsp.loaded_vertices[vtx3_idx];
-    struct LoadedVertex *v_arr[3] = {v1, v2, v3};
-    
-    //if (rand()%2) return;
-    
-    if (v1->clip_rej & v2->clip_rej & v3->clip_rej) {
-        // The whole triangle lies outside the visible area
-        return;
-    }
-    
-    if ((rsp.geometry_mode & G_CULL_BOTH) != 0) {
-        float dx1 = v1->x / (v1->w) - v2->x / (v2->w);
-        float dy1 = v1->y / (v1->w) - v2->y / (v2->w);
-        float dx2 = v3->x / (v3->w) - v2->x / (v2->w);
-        float dy2 = v3->y / (v3->w) - v2->y / (v2->w);
-        float cross = dx1 * dy2 - dy1 * dx2;
-        
-        if ((v1->w < 0) ^ (v2->w < 0) ^ (v3->w < 0)) {
-            // If one vertex lies behind the eye, negating cross will give the correct result.
-            // If all vertices lie behind the eye, the triangle will be rejected anyway.
-            cross = -cross;
-        }
-        
-        switch (rsp.geometry_mode & G_CULL_BOTH) {
-            case G_CULL_FRONT:
-                if (cross <= 0) return;
-                break;
-            case G_CULL_BACK:
-                if (cross >= 0) return;
-                break;
-            case G_CULL_BOTH:
-                // Why is this even an option?
-                return;
-        }
-    }
-    
-    bool depth_test = (rsp.geometry_mode & G_ZBUFFER) == G_ZBUFFER;
-    if (depth_test != rendering_state.depth_test) {
-        gfx_flush();
-        gfx_rapi->set_depth_test(depth_test);
-        rendering_state.depth_test = depth_test;
-    }
-    
-    bool z_upd = (rdp.other_mode_l & Z_UPD) == Z_UPD;
-    if (z_upd != rendering_state.depth_mask) {
-        gfx_flush();
-        gfx_rapi->set_depth_mask(z_upd);
-        rendering_state.depth_mask = z_upd;
-    }
-    
-    bool zmode_decal = (rdp.other_mode_l & ZMODE_DEC) == ZMODE_DEC;
-    if (zmode_decal != rendering_state.decal_mode) {
-        gfx_flush();
-        gfx_rapi->set_zmode_decal(zmode_decal);
-        rendering_state.decal_mode = zmode_decal;
-    }
-    
-    if (rdp.viewport_or_scissor_changed) {
-        if (memcmp(&rdp.viewport, &rendering_state.viewport, sizeof(rdp.viewport)) != 0) {
-            gfx_flush();
-            gfx_rapi->set_viewport(rdp.viewport.x, rdp.viewport.y, rdp.viewport.width, rdp.viewport.height);
-            rendering_state.viewport = rdp.viewport;
-        }
-        if (memcmp(&rdp.scissor, &rendering_state.scissor, sizeof(rdp.scissor)) != 0) {
-            gfx_flush();
-            gfx_rapi->set_scissor(rdp.scissor.x, rdp.scissor.y, rdp.scissor.width, rdp.scissor.height);
-            rendering_state.scissor = rdp.scissor;
-        }
-        rdp.viewport_or_scissor_changed = false;
-    }
-    
+static inline struct ColorCombiner *gfx_pick_combiner(bool *out_use_fog, bool *out_use_alpha) {
     uint32_t cc_id = rdp.combine_mode;
-    
+
     bool use_alpha = (rdp.other_mode_l & (G_BL_A_MEM << 18)) == 0;
-    bool use_fog = (rdp.other_mode_l >> 30) == G_BL_CLR_FOG;
-    bool texture_edge = (rdp.other_mode_l & CVG_X_ALPHA) == CVG_X_ALPHA;
-    bool use_noise = (rdp.other_mode_l & G_AC_DITHER) == G_AC_DITHER;
-    
+    const bool use_fog = (rdp.other_mode_l >> 30) == G_BL_CLR_FOG;
+    const bool texture_edge = (rdp.other_mode_l & CVG_X_ALPHA) == CVG_X_ALPHA;
+    const bool use_noise = (rdp.other_mode_l & G_AC_DITHER) == G_AC_DITHER;
+
     if (texture_edge) {
         use_alpha = true;
     }
-    
+
     if (use_alpha) cc_id |= SHADER_OPT_ALPHA;
     if (use_fog) cc_id |= SHADER_OPT_FOG;
     if (texture_edge) cc_id |= SHADER_OPT_TEXTURE_EDGE;
     if (use_noise) cc_id |= SHADER_OPT_NOISE;
-    
+
     if (!use_alpha) {
         cc_id &= ~0xfff000;
     }
-    
+
     struct ColorCombiner *comb = gfx_lookup_or_create_color_combiner(cc_id);
     struct ShaderProgram *prg = comb->prg;
     if (prg != rendering_state.shader_program) {
@@ -814,10 +788,14 @@ static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx) {
         gfx_rapi->set_use_alpha(use_alpha);
         rendering_state.alpha_blend = use_alpha;
     }
-    uint8_t num_inputs;
-    bool used_textures[2];
-    gfx_rapi->shader_get_info(prg, &num_inputs, used_textures);
-    
+
+    if (out_use_fog) *out_use_fog = use_fog;
+    if (out_use_alpha) *out_use_alpha = use_alpha;
+
+    return comb;
+}
+
+static inline bool gfx_update_textures(const bool used_textures[2], const bool linear_filter) {
     for (int i = 0; i < 2; i++) {
         if (used_textures[i]) {
             if (rdp.textures_changed[i]) {
@@ -825,7 +803,6 @@ static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx) {
                 import_texture(i);
                 rdp.textures_changed[i] = false;
             }
-            bool linear_filter = (rdp.other_mode_h & (3U << G_MDSFT_TEXTFILT)) != G_TF_POINT;
             if (linear_filter != rendering_state.textures[i]->linear_filter || rdp.texture_tile.cms != rendering_state.textures[i]->cms || rdp.texture_tile.cmt != rendering_state.textures[i]->cmt) {
                 gfx_flush();
                 gfx_rapi->set_sampler_parameters(i, linear_filter, rdp.texture_tile.cms, rdp.texture_tile.cmt);
@@ -835,23 +812,78 @@ static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx) {
             }
         }
     }
-    
-    bool use_texture = used_textures[0] || used_textures[1];
-    uint32_t tex_width = (rdp.texture_tile.lrs - rdp.texture_tile.uls + 4) / 4;
-    uint32_t tex_height = (rdp.texture_tile.lrt - rdp.texture_tile.ult + 4) / 4;
-    
-    bool z_is_from_0_to_1 = gfx_rapi->z_is_from_0_to_1();
-    
-    for (int i = 0; i < 3; i++) {
-        float z = v_arr[i]->z, w = v_arr[i]->w;
-        if (z_is_from_0_to_1) {
-            z = (z + w) / 2.0f;
+    return used_textures[0] || used_textures[1];
+}
+
+static inline void gfx_push_triangle(const struct LoadedVertex *restrict v1, const struct LoadedVertex *restrict v2, const struct LoadedVertex *restrict v3) {
+    const struct LoadedVertex *v_arr[3] = {v1, v2, v3};
+
+    const bool depth_test = (rsp.geometry_mode & G_ZBUFFER) == G_ZBUFFER;
+    if (depth_test != rendering_state.depth_test) {
+        gfx_flush();
+        gfx_rapi->set_depth_test(depth_test);
+        rendering_state.depth_test = depth_test;
+    }
+
+    const bool z_upd = (rdp.other_mode_l & Z_UPD) == Z_UPD;
+    if (z_upd != rendering_state.depth_mask) {
+        gfx_flush();
+        gfx_rapi->set_depth_mask(z_upd);
+        rendering_state.depth_mask = z_upd;
+    }
+
+    const bool zmode_decal = (rdp.other_mode_l & ZMODE_DEC) == ZMODE_DEC;
+    if (zmode_decal != rendering_state.decal_mode) {
+        gfx_flush();
+        gfx_rapi->set_zmode_decal(zmode_decal);
+        rendering_state.decal_mode = zmode_decal;
+    }
+
+    if (rdp.viewport_or_scissor_changed) {
+        if (memcmp(&rdp.viewport, &rendering_state.viewport, sizeof(rdp.viewport)) != 0) {
+            gfx_flush();
+            gfx_rapi->set_viewport(rdp.viewport.x, rdp.viewport.y, rdp.viewport.width, rdp.viewport.height);
+            rendering_state.viewport = rdp.viewport;
         }
-        buf_vbo[buf_vbo_len++] = v_arr[i]->x;
-        buf_vbo[buf_vbo_len++] = v_arr[i]->y;
-        buf_vbo[buf_vbo_len++] = z;
+        if (memcmp(&rdp.scissor, &rendering_state.scissor, sizeof(rdp.scissor)) != 0) {
+            gfx_flush();
+            gfx_rapi->set_scissor(rdp.scissor.x, rdp.scissor.y, rdp.scissor.width, rdp.scissor.height);
+            rendering_state.scissor = rdp.scissor;
+        }
+        rdp.viewport_or_scissor_changed = false;
+    }
+
+    uint8_t num_inputs;
+    bool used_textures[2], use_fog, use_alpha;
+
+    struct ColorCombiner *comb = gfx_pick_combiner(&use_fog, &use_alpha);
+    gfx_rapi->shader_get_info(rendering_state.shader_program, &num_inputs, used_textures);
+
+    const bool linear_filter = (rdp.other_mode_h & (3U << G_MDSFT_TEXTFILT)) != G_TF_POINT;
+    const bool use_texture = gfx_update_textures(used_textures, linear_filter);
+    const float inv_tex_width = 1.f / (float)((rdp.texture_tile.lrs - rdp.texture_tile.uls + 4) / 4);
+    const float inv_tex_height = 1.f / (float)((rdp.texture_tile.lrt - rdp.texture_tile.ult + 4) / 4);
+
+    const bool z_is_from_0_to_1 = gfx_rapi->z_is_from_0_to_1();
+
+    for (int i = 0; i < 3; i++) {
+        const float w = v_arr[i]->w;
+#ifdef GFX_W_PREMULT
+        const float inv_w = 1.f / w;
+#endif
+
+        float z = v_arr[i]->z;
+        if (z_is_from_0_to_1) z = (z + w) * 0.5f;
+
+        buf_vbo[buf_vbo_len++] = GFX_OUT_COORD(v_arr[i]->x);
+        buf_vbo[buf_vbo_len++] = GFX_OUT_COORD(v_arr[i]->y);
+        buf_vbo[buf_vbo_len++] = GFX_OUT_COORD(z);
+#ifdef GFX_W_PREMULT
+        buf_vbo[buf_vbo_len++] = inv_w;
+#else
         buf_vbo[buf_vbo_len++] = w;
-        
+#endif
+
         if (use_texture) {
             float u = (v_arr[i]->u - rdp.texture_tile.uls * 8) / 32.0f;
             float v = (v_arr[i]->v - rdp.texture_tile.ult * 8) / 32.0f;
@@ -860,20 +892,30 @@ static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx) {
                 u += 0.5f;
                 v += 0.5f;
             }
-            buf_vbo[buf_vbo_len++] = u / tex_width;
-            buf_vbo[buf_vbo_len++] = v / tex_height;
+            u *= inv_tex_width;
+            v *= inv_tex_height;
+            buf_vbo[buf_vbo_len++] = GFX_OUT_COORD(u);
+            buf_vbo[buf_vbo_len++] = GFX_OUT_COORD(v);
         }
-        
+
         if (use_fog) {
-            buf_vbo[buf_vbo_len++] = rdp.fog_color.r / 255.0f;
-            buf_vbo[buf_vbo_len++] = rdp.fog_color.g / 255.0f;
-            buf_vbo[buf_vbo_len++] = rdp.fog_color.b / 255.0f;
-            buf_vbo[buf_vbo_len++] = v_arr[i]->color.a / 255.0f; // fog factor (not alpha)
+#ifdef GFX_PACK_COLORS
+            rdp.fog_color.a = v_arr[i]->color.a;
+            ((uint32_t *)buf_vbo)[buf_vbo_len++] = rdp.fog_color.rgba;
+#else
+            buf_vbo[buf_vbo_len++] = rdp.fog_color.r;
+            buf_vbo[buf_vbo_len++] = rdp.fog_color.g;
+            buf_vbo[buf_vbo_len++] = rdp.fog_color.b;
+            buf_vbo[buf_vbo_len++] = v_arr[i]->color.a; // fog factor (not alpha)
+#endif
         }
-        
+
         for (int j = 0; j < num_inputs; j++) {
-            struct RGBA *color;
-            struct RGBA tmp;
+            const union RGBA *color;
+            union RGBA tmp;
+#ifdef GFX_PACK_COLORS
+            union RGBA out = (union RGBA) { { 0x80, 0x80, 0x80, GFX_ALPHA_ONE } };
+#endif
             for (int k = 0; k < 1 + (use_alpha ? 1 : 0); k++) {
                 switch (comb->shader_input_mapping[k][j]) {
                     case CC_PRIM:
@@ -899,21 +941,37 @@ static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx) {
                         color = &tmp;
                         break;
                 }
+#ifndef GFX_PACK_COLORS
                 if (k == 0) {
-                    buf_vbo[buf_vbo_len++] = color->r / 255.0f;
-                    buf_vbo[buf_vbo_len++] = color->g / 255.0f;
-                    buf_vbo[buf_vbo_len++] = color->b / 255.0f;
+                    buf_vbo[buf_vbo_len++] = GFX_COLOR_CONV(color->r);
+                    buf_vbo[buf_vbo_len++] = GFX_COLOR_CONV(color->g);
+                    buf_vbo[buf_vbo_len++] = GFX_COLOR_CONV(color->b);
                 } else {
                     if (use_fog && color == &v_arr[i]->color) {
                         // Shade alpha is 100% for fog
-                        buf_vbo[buf_vbo_len++] = 1.0f;
+                        buf_vbo[buf_vbo_len++] = 1.f;
                     } else {
-                        buf_vbo[buf_vbo_len++] = color->a / 255.0f;
+                        buf_vbo[buf_vbo_len++] = GFX_ALPHA_CONV(color->a);
                     }
                 }
             }
+#else
+                if (k == 0) {
+                    out.r = GFX_COLOR_CONV(color->r);
+                    out.g = GFX_COLOR_CONV(color->g);
+                    out.b = GFX_COLOR_CONV(color->b);
+                } else {
+                    if (use_fog && color == &v_arr[i]->color)
+                        // Shade alpha is 100% for fog
+                        out.a = GFX_ALPHA_ONE;
+                    else
+                        out.a = GFX_ALPHA_CONV(color->a);
+                }
+            }
+            ((uint32_t *)buf_vbo)[buf_vbo_len++] = out.rgba;
+#endif
         }
-        /*struct RGBA *color = &v_arr[i]->color;
+        /*union RGBA *color = &v_arr[i]->color;
         buf_vbo[buf_vbo_len++] = color->r / 255.0f;
         buf_vbo[buf_vbo_len++] = color->g / 255.0f;
         buf_vbo[buf_vbo_len++] = color->b / 255.0f;
@@ -922,6 +980,147 @@ static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx) {
     if (++buf_vbo_num_tris == MAX_BUFFERED) {
         gfx_flush();
     }
+}
+
+#ifdef GFX_MANUAL_CLIPPING
+static inline float flerp(const float v0, const float v1, const float t) {
+    return v0 + t * (v1 - v0);
+}
+
+static inline union RGBA rgba_lerp(const union RGBA c0, const union RGBA c1, const float t) {
+    return (union RGBA){{
+        c0.r + (c1.r - c0.r) * t,
+        c0.g + (c1.g - c0.g) * t,
+        c0.b + (c1.b - c0.b) * t,
+        c0.a + (c0.a - c0.a) * t,
+    }};
+}
+
+static inline bool gfx_clip_triangle(struct LoadedVertex *v1, struct LoadedVertex *v2, struct LoadedVertex *v3, const uint8_t clip_and) {
+    static const float c_planes[][4] = {
+        {  0.0f,  0.0f, -1.0f,  1.0f }, // near
+        {  0.0f,  0.0f,  1.0f,  1.0f }, // far
+        {  0.0f, -1.0f,  0.0f,  1.0f }, // top
+        {  0.0f,  1.0f,  0.0f,  1.0f }, // bottom
+        { -1.0f,  0.0f,  0.0f,  1.0f }, // left
+        {  1.0f,  0.0f,  0.0f,  1.0f }, // right
+    };
+
+    const uint8_t clip_or = v1->clip_rej | v2->clip_rej | v3->clip_rej;
+
+    if (!clip_or && clip_and) return false; // triangle fully in frustum
+
+    struct LoadedVertex v_buf[2][12] = { { *v1, *v2, *v3 } };
+    int v_num[2] = { 3, 0 };
+    int v_idx = 0;
+
+    uint8_t plane_idx = 0;
+    for (uint8_t clip_mask = 1; clip_mask < 64; clip_mask <<= 1, ++plane_idx) {
+        if (!(clip_or & clip_mask)) continue;
+
+        const int num_verts = v_num[v_idx];
+        const int outidx = !v_idx;
+        const struct LoadedVertex *v_in = v_buf[v_idx];
+        struct LoadedVertex *v_out = v_buf[outidx];
+        const float *plane = c_planes[plane_idx];
+
+        for (int i = 0; i < num_verts; ++i) {
+            const struct LoadedVertex *vthis = &v_in[i];
+            const struct LoadedVertex *vnext = &v_in[(i + 1) % num_verts];
+            const float d1 = plane[0] * vthis->x + plane[1] * vthis->y + plane[2] * vthis->z + vthis->w;
+            const float d2 = plane[0] * vnext->x + plane[1] * vnext->y + plane[2] * vnext->z + vnext->w;
+            const bool this_in = d1 > 0.0f;
+            const bool next_in = d2 > 0.0f;
+            // current is inside clipping plane, push it into output
+            if (this_in) v_out[v_num[outidx]++] = *vthis;
+            // one of the vertices is outside, clip the edge and push intersection
+            if (this_in ^ next_in) {
+                struct LoadedVertex *xv = &v_out[v_num[outidx]++];
+                if (this_in) {
+                    const float t = d1 / (d1 - d2);
+                    xv->x = flerp(vthis->x, vnext->x, t);
+                    xv->y = flerp(vthis->y, vnext->y, t);
+                    xv->z = flerp(vthis->z, vnext->z, t);
+                    xv->w = flerp(vthis->w, vnext->w, t);
+                    xv->u = flerp(vthis->u, vnext->u, t);
+                    xv->v = flerp(vthis->v, vnext->v, t);
+                    xv->color = rgba_lerp(vthis->color, vnext->color, t);
+                    xv->clip_rej = 0;
+                } else {
+                    const float t = d2 / (d2 - d1);
+                    xv->x = flerp(vnext->x, vthis->x, t);
+                    xv->y = flerp(vnext->y, vthis->y, t);
+                    xv->z = flerp(vnext->z, vthis->z, t);
+                    xv->w = flerp(vnext->w, vthis->w, t);
+                    xv->u = flerp(vnext->u, vthis->u, t);
+                    xv->v = flerp(vnext->v, vthis->v, t);
+                    xv->color = rgba_lerp(vnext->color, vthis->color, t);
+                }
+            }
+        }
+
+        if (v_num[outidx] < 3) return true; // not enough for a triangle
+
+        v_idx = outidx;
+        v_num[!v_idx] = 0;
+    }
+
+    // make a triangle fan
+    const int n = v_num[v_idx] - 1;
+    const struct LoadedVertex *in = v_buf[v_idx];
+    for (int i = 1; i < n; ++i)
+        gfx_push_triangle(in + 0, in + i, in + i + 1);
+
+    return true;
+}
+#endif // GFX_MANUAL_CLIPPING
+
+static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx) {
+    struct LoadedVertex *v1 = &rsp.loaded_vertices[vtx1_idx];
+    struct LoadedVertex *v2 = &rsp.loaded_vertices[vtx2_idx];
+    struct LoadedVertex *v3 = &rsp.loaded_vertices[vtx3_idx];
+
+    //if (rand()%2) return;
+
+    const uint8_t clip_and = v1->clip_rej & v2->clip_rej & v3->clip_rej;
+    if (clip_and) {
+        // The whole triangle lies outside the visible area
+        return;
+    }
+
+    if ((rsp.geometry_mode & G_CULL_BOTH) != 0) {
+        float dx1 = v1->x / (v1->w) - v2->x / (v2->w);
+        float dy1 = v1->y / (v1->w) - v2->y / (v2->w);
+        float dx2 = v3->x / (v3->w) - v2->x / (v2->w);
+        float dy2 = v3->y / (v3->w) - v2->y / (v2->w);
+        float cross = dx1 * dy2 - dy1 * dx2;
+
+        if ((v1->w < 0) ^ (v2->w < 0) ^ (v3->w < 0)) {
+            // If one vertex lies behind the eye, negating cross will give the correct result.
+            // If all vertices lie behind the eye, the triangle will be rejected anyway.
+            cross = -cross;
+        }
+
+        switch (rsp.geometry_mode & G_CULL_BOTH) {
+            case G_CULL_FRONT:
+                if (cross <= 0) return;
+                break;
+            case G_CULL_BACK:
+                if (cross >= 0) return;
+                break;
+            case G_CULL_BOTH:
+                // Why is this even an option?
+                return;
+        }
+    }
+
+#ifdef GFX_MANUAL_CLIPPING
+    // clip the triangle and put the resulting triangles into the buffer
+    // otherwise put the current triangle
+    if (!gfx_clip_triangle(v1, v2, v3, clip_and))
+#endif
+
+    gfx_push_triangle(v1, v2, v3);
 }
 
 static void gfx_sp_geometry_mode(uint32_t clear, uint32_t set) {

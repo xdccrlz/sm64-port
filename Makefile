@@ -21,6 +21,8 @@ NON_MATCHING ?= 0
 TARGET_N64 ?= 0
 # Build for Emscripten/WebGL
 TARGET_WEB ?= 0
+# Build for PS2
+TARGET_PS2 ?= 1
 # Compiler to use (ido or gcc)
 COMPILER ?= ido
 
@@ -30,7 +32,7 @@ ifeq ($(TARGET_N64),0)
   NON_MATCHING := 1
   GRUCODE := f3dex2e
   TARGET_WINDOWS := 0
-  ifeq ($(TARGET_WEB),0)
+  ifeq ($(TARGET_WEB)$(TARGET_PS2),00)
     ifeq ($(OS),Windows_NT)
       TARGET_WINDOWS := 1
     else
@@ -46,7 +48,7 @@ ifeq ($(TARGET_N64),0)
         ENABLE_DX11 ?= 1
       endif
     endif
-  else
+  else ifneq ($(TARGET_PS2),1)
     # On others, default to OpenGL
     ENABLE_OPENGL ?= 1
   endif
@@ -190,23 +192,23 @@ endif
 BUILD_DIR_BASE := build
 ifeq ($(TARGET_N64),1)
   BUILD_DIR := $(BUILD_DIR_BASE)/$(VERSION)
-else
-ifeq ($(TARGET_WEB),1)
+else ifeq ($(TARGET_WEB),1)
   BUILD_DIR := $(BUILD_DIR_BASE)/$(VERSION)_web
+else ifeq ($(TARGET_PS2),1)
+  BUILD_DIR := $(BUILD_DIR_BASE)/$(VERSION)_ps2
 else
   BUILD_DIR := $(BUILD_DIR_BASE)/$(VERSION)_pc
-endif
 endif
 
 LIBULTRA := $(BUILD_DIR)/libultra.a
 ifeq ($(TARGET_WEB),1)
 EXE := $(BUILD_DIR)/$(TARGET).html
-else
-ifeq ($(TARGET_WINDOWS),1)
+else ifeq ($(TARGET_WINDOWS),1)
 EXE := $(BUILD_DIR)/$(TARGET).exe
+else ifeq ($(TARGET_PS2),1)
+EXE := $(BUILD_DIR)/$(TARGET).elf
 else
 EXE := $(BUILD_DIR)/$(TARGET)
-endif
 endif
 ROM := $(BUILD_DIR)/$(TARGET).z64
 ELF := $(BUILD_DIR)/$(TARGET).elf
@@ -255,14 +257,14 @@ endif
 
   # Use a default opt flag for gcc
   ifeq ($(COMPILER),gcc)
-    OPT_FLAGS := -O2
+    OPT_FLAGS := -O2 -g
   endif
 
 else
 ifeq ($(TARGET_WEB),1)
   OPT_FLAGS := -O2 -g4 --source-map-base http://localhost:8080/
 else
-  OPT_FLAGS := -O2
+  OPT_FLAGS := -O2 -g3
 endif
 endif
 
@@ -423,21 +425,39 @@ export LANG := C
 
 else # TARGET_N64
 
-AS := as
-ifneq ($(TARGET_WEB),1)
-  CC := gcc
-  CXX := g++
+
+ifeq ($(TARGET_PS2),1)
+  ifeq ($(PS2SDK),)
+    $(error PS2SDK is not defined)
+  endif
+  EE_PREFIX ?= ee-
+  CC = $(EE_PREFIX)gcc -std=gnu99
+  CXX= $(EE_PREFIX)g++ -std=gnu99
+  CPP= $(EE_PREFIX)cpp -P
+  AS = as
+  LD = $(EE_PREFIX)gcc
+  AR = $(EE_PREFIX)ar
+  OBJCOPY = $(EE_PREFIX)objcopy
+  OBJDUMP = $(EE_PREFIX)objdump
+  STRIP = $(EE_PREFIX)strip
 else
-  CC := emcc
+  AS := as
+  ifneq ($(TARGET_WEB),1)
+    CC := gcc
+    CXX := g++
+  else
+    CC := emcc
+  endif
+  ifeq ($(TARGET_WINDOWS),1)
+    LD := $(CXX)
+  else
+    LD := $(CC)
+  endif
+  CPP := cpp -P
+  OBJDUMP := objdump
+  OBJCOPY := objcopy
 endif
-ifeq ($(TARGET_WINDOWS),1)
-  LD := $(CXX)
-else
-  LD := $(CC)
-endif
-CPP := cpp -P
-OBJDUMP := objdump
-OBJCOPY := objcopy
+
 PYTHON := python3
 
 # Platform-specific compiler and linker flags
@@ -452,6 +472,11 @@ endif
 ifeq ($(TARGET_WEB),1)
   PLATFORM_CFLAGS  := -DTARGET_WEB
   PLATFORM_LDFLAGS := -lm -no-pie -s TOTAL_MEMORY=20MB -g4 --source-map-base http://localhost:8080/ -s "EXTRA_EXPORTED_RUNTIME_METHODS=['callMain']"
+endif
+ifeq ($(TARGET_PS2),1)
+  PLATFORM_CFLAGS  := -DTARGET_PS2 -D_EE -G0 -I$(PS2SDK)/ee/include -I$(PS2SDK)/common/include -I$(GSKIT)/include
+  PLATFORM_LDFLAGS := -L$(GSKIT)/lib -lgskit_toolkit -lgskit -ldmakit -L$(PS2SDK)/ee/lib -lm -lc
+  PLATFORM_ASFLAGS := --32 -march=generic32
 endif
 
 PLATFORM_CFLAGS += -DNO_SEGMENTED_MEMORY
@@ -484,10 +509,10 @@ endif
 
 GFX_CFLAGS += -DWIDESCREEN
 
-CC_CHECK := $(CC) -fsyntax-only -fsigned-char $(INCLUDE_CFLAGS) -Wall -Wextra -Wno-format-security -D_LANGUAGE_C $(VERSION_CFLAGS) $(MATCH_CFLAGS) $(PLATFORM_CFLAGS) $(GFX_CFLAGS) $(GRUCODE_CFLAGS)
-CFLAGS := $(OPT_FLAGS) $(INCLUDE_CFLAGS) -D_LANGUAGE_C $(VERSION_CFLAGS) $(MATCH_CFLAGS) $(PLATFORM_CFLAGS) $(GFX_CFLAGS) $(GRUCODE_CFLAGS) -fno-strict-aliasing -fwrapv -march=native
+CC_CHECK := $(CC) -fsyntax-only -fsigned-char $(INCLUDE_CFLAGS) -Wall -Wno-format-security -D_LANGUAGE_C $(VERSION_CFLAGS) $(MATCH_CFLAGS) $(PLATFORM_CFLAGS) $(GFX_CFLAGS) $(GRUCODE_CFLAGS)
+CFLAGS := $(OPT_FLAGS) $(INCLUDE_CFLAGS) -D_LANGUAGE_C $(VERSION_CFLAGS) $(MATCH_CFLAGS) $(PLATFORM_CFLAGS) $(GFX_CFLAGS) $(GRUCODE_CFLAGS)
 
-ASFLAGS := -I include -I $(BUILD_DIR) $(VERSION_ASFLAGS)
+ASFLAGS := -I include -I $(BUILD_DIR) $(PLATFORM_ASFLAGS) $(VERSION_ASFLAGS)
 
 LDFLAGS := $(PLATFORM_LDFLAGS) $(GFX_LDFLAGS)
 
