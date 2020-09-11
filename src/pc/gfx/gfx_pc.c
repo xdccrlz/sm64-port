@@ -122,6 +122,7 @@ struct ColorCombiner {
     uint32_t cc_id;
     struct ShaderProgram *prg;
     uint8_t shader_input_mapping[2][4];
+    bool tex_decal;
 };
 
 static struct ColorCombiner color_combiner_pool[64];
@@ -186,6 +187,7 @@ static struct RenderingState {
     bool depth_mask;
     bool decal_mode;
     bool alpha_blend;
+    uint32_t shader_id;
     struct XYWidthHeight viewport, scissor;
     struct ShaderProgram *shader_program;
     struct TextureHashmapNode *textures[2];
@@ -226,6 +228,7 @@ static struct ShaderProgram *gfx_lookup_or_create_shader_program(uint32_t shader
         gfx_rapi->unload_shader(rendering_state.shader_program);
         prg = gfx_rapi->create_and_load_new_shader(shader_id);
         rendering_state.shader_program = prg;
+        rendering_state.shader_id = shader_id;
     }
     return prg;
 }
@@ -274,6 +277,7 @@ static void gfx_generate_cc(struct ColorCombiner *comb, uint32_t cc_id) {
     }
     comb->cc_id = cc_id;
     comb->prg = gfx_lookup_or_create_shader_program(shader_id);
+    comb->tex_decal = (shader_id == 0x01045A00 || shader_id == 0x01200A00 || shader_id == 0x0000038D); // HACK: use flags for this
     memcpy(comb->shader_input_mapping, shader_input_mapping, sizeof(shader_input_mapping));
 }
 
@@ -331,7 +335,7 @@ static bool gfx_texture_cache_lookup(int tile, struct TextureHashmapNode **n, co
 
 static void import_texture_rgba16(int tile) {
     uint8_t rgba32_buf[8192];
-    
+
     for (uint32_t i = 0; i < rdp.loaded_texture[tile].size_bytes / 2; i++) {
         uint16_t col16 = (rdp.loaded_texture[tile].addr[2 * i] << 8) | rdp.loaded_texture[tile].addr[2 * i + 1];
         uint8_t a = col16 & 1;
@@ -341,7 +345,7 @@ static void import_texture_rgba16(int tile) {
         rgba32_buf[4*i + 0] = SCALE_5_8(r);
         rgba32_buf[4*i + 1] = SCALE_5_8(g);
         rgba32_buf[4*i + 2] = SCALE_5_8(b);
-        rgba32_buf[4*i + 3] = a ? 255 : 0;
+        rgba32_buf[4*i + 3] = GFX_TEXALPHA_BOOL(a);
     }
     
     uint32_t width = rdp.texture_tile.line_size_bytes / 2;
@@ -866,6 +870,8 @@ static inline void gfx_push_triangle(const struct LoadedVertex *restrict v1, con
 
     const bool z_is_from_0_to_1 = gfx_rapi->z_is_from_0_to_1();
 
+    const bool solid_texture = use_texture && !comb->tex_decal;
+
     for (int i = 0; i < 3; i++) {
         const float w = v_arr[i]->w;
 #ifdef GFX_W_PREMULT
@@ -957,9 +963,16 @@ static inline void gfx_push_triangle(const struct LoadedVertex *restrict v1, con
             }
 #else
                 if (k == 0) {
-                    out.r = GFX_COLOR_CONV(color->r);
-                    out.g = GFX_COLOR_CONV(color->g);
-                    out.b = GFX_COLOR_CONV(color->b);
+                    // only halve colors if we're going full modulate
+                    if (solid_texture) {
+                        out.r = GFX_COLOR_CONV(color->r);
+                        out.g = GFX_COLOR_CONV(color->g);
+                        out.b = GFX_COLOR_CONV(color->b);
+                    } else {
+                        out.r = color->r;
+                        out.g = color->g;
+                        out.b = color->b;
+                    }
                 } else {
                     if (use_fog && color == &v_arr[i]->color)
                         // Shade alpha is 100% for fog
