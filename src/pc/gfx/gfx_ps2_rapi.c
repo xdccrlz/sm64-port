@@ -24,6 +24,15 @@
 
 #define MAX_TEXTURES 3072
 
+// GS_SETREG_ALPHA(A, B, C, D, FIX)
+// A = 0 = Cs
+// B = 1 = Cd
+// C = 0 = As
+// D = 1 = Cd
+// FIX =  128 (const alpha, unused)
+// RGB = (A - B) * C + D = (Cs - Cd) * As + Cd -> normal blending, alpha 0-128
+#define BMODE_BLEND GS_SETREG_ALPHA(0, 1, 0, 1, 128)
+
 extern GSGLOBAL *gs_global;
 
 typedef union TexCoord { 
@@ -187,16 +196,13 @@ static void gfx_ps2_set_use_alpha(bool use_alpha) {
     do_blend = use_alpha;
 
     gs_global->PrimAlphaEnable = use_alpha;
-    gs_global->PrimAlpha = use_alpha;
-    gs_global->PABE = use_alpha;
+    gs_global->PrimAlpha = use_alpha ? BMODE_BLEND : 0;
+    gs_global->PABE = 0;
 
-    u64 *p_data = gsKit_heap_alloc(gs_global, 2, 32, GIF_AD);
+    u64 *p_data = gsKit_heap_alloc(gs_global, 1, 16, GIF_AD);
 
-    *p_data++ = GIF_TAG_AD(2);
+    *p_data++ = GIF_TAG_AD(1);
     *p_data++ = GIF_AD;
-
-    *p_data++ = gs_global->PABE;
-    *p_data++ = GS_PABE;
 
     *p_data++ = gs_global->PrimAlpha;
     *p_data++ = GS_ALPHA_1 + gs_global->PrimContext;
@@ -302,8 +308,8 @@ static void gsKit_prim_triangle_goraud_texture_3d_st(GSGLOBAL *gsGlobal, GSTEXTU
 static inline void update_tests(void) {
     if (cur_shader->alpha_test) {
         gs_global->Test->ATE = 1;
-        gs_global->Test->ATST = 2; // ATEST_METHOD_LESS
-        gs_global->Test->AREF = 0x40;
+        gs_global->Test->ATST = 5; // ATEST_METHOD_LESS
+        gs_global->Test->AREF = 0x50;
     } else {
         gs_global->Test->ATE = 0;
         gs_global->Test->ATST = 1; // ATEST_METHOD_ALLPASS
@@ -330,9 +336,9 @@ static void gfx_ps2_draw_triangles(float buf_vbo[], size_t buf_vbo_len, size_t b
     const size_t tri_stride = vtx_stride * 3;
     const size_t col_offset = vtx_stride - (cur_shader->use_alpha ? 4 : 3);
 
-    ColorQ c0 = (ColorQ) { { 0x80, 0x80, 0x80, 0x00, 1.f } };
-    ColorQ c1 = (ColorQ) { { 0x80, 0x80, 0x80, 0x00, 1.f } };
-    ColorQ c2 = (ColorQ) { { 0x80, 0x80, 0x80, 0x00, 1.f } };
+    ColorQ c0 = (ColorQ) { { 0x80, 0x80, 0x80, 0x80, 1.f } };
+    ColorQ c1 = (ColorQ) { { 0x80, 0x80, 0x80, 0x80, 1.f } };
+    ColorQ c2 = (ColorQ) { { 0x80, 0x80, 0x80, 0x80, 1.f } };
 
     register float *v0, *v1, *v2;
     register float *p = buf_vbo;

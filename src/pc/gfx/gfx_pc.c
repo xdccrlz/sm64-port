@@ -48,13 +48,13 @@
 #define GFX_W_PREMULT 1
 
 #define GFX_COLOR_CONV(x) ((x) >> 1)
-#define GFX_ALPHA_CONV(x) (128 - ((int)(x * 128.f) / 255))
+#define GFX_ALPHA_CONV(x) ((int)(x * 128.f) / 255)
 
-#define GFX_TEXALPHA_CONV(x) (128 - ((int)x * 128 / 255))
-#define GFX_TEXALPHA_BOOL(x) ((x) ? 0x00 : 0x80)
+#define GFX_TEXALPHA_CONV(x) ((int)x * 128 / 255)
+#define GFX_TEXALPHA_BOOL(x) ((x) ? 0x80 : 0x00)
 
-#define GFX_ALPHA_ONE  0x00
-#define GFX_ALPHA_ZERO 0x80
+#define GFX_ALPHA_ONE  0x80
+#define GFX_ALPHA_ZERO 0x00
 
 #else
 
