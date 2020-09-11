@@ -73,6 +73,20 @@ struct Texture {
     uint32_t clamp_t;
 };
 
+struct Viewport {
+    float x, cy;
+    float y, cx;
+    float w, hw;
+    float h, hh;
+};
+
+struct Clip {
+    int x0;
+    int y0;
+    int x1;
+    int y1;
+};
+
 static struct ShaderProgram shader_program_pool[64];
 static uint8_t shader_program_pool_size;
 static struct ShaderProgram *cur_shader;
@@ -82,6 +96,9 @@ static uint32_t tex_pool_size;
 
 static struct Texture *cur_tex[2];
 static struct Texture *last_tex;
+
+static struct Clip r_clip;
+static struct Viewport r_view;
 
 static bool z_test = true;
 static bool z_mask = false;
@@ -200,11 +217,32 @@ static void gfx_ps2_set_zmode_decal(bool zmode_decal) {
 }
 
 static void gfx_ps2_set_viewport(int x, int y, int width, int height) {
-    // ???
+    r_view.x = x;
+    r_view.y = y;
+    r_view.w = width;
+    r_view.h = height;
+    r_view.hw = r_view.w * 0.5f;
+    r_view.hh = r_view.h * 0.5f;
+    r_view.cx = r_view.x + r_view.hw;
+    r_view.cy = r_view.y + r_view.hh;
+}
+
+static inline void draw_set_scissor(const int x0, const int y0, const int x1, const int y1) {
+    u64 *p_data = gsKit_heap_alloc(gs_global, 1, 16, GIF_AD);
+
+    *p_data++ = GIF_TAG_AD(1);
+    *p_data++ = GIF_AD;
+
+    *p_data++ = GS_SETREG_SCISSOR_1(x0, x1, y0, y1);
+    *p_data++ = GS_SCISSOR_1;
 }
 
 static void gfx_ps2_set_scissor(int x, int y, int width, int height) {
-    // ???
+    r_clip.x0 = x;
+    r_clip.y0 = y;
+    r_clip.x1 = x + width - 1;
+    r_clip.y1 = y + height - 1;
+    draw_set_scissor(r_clip.x0, r_clip.y0, r_clip.x1, r_clip.y1);
 }
 
 static void gfx_ps2_set_use_alpha(bool use_alpha) {
@@ -224,8 +262,8 @@ static void gfx_ps2_set_use_alpha(bool use_alpha) {
 }
 
 static inline void viewport_transform(float *v) {
-    v[0] = v[0] * 320.f + 320.f;
-    v[1] = v[1] * -224.f + 224.f;
+    v[0] = v[0] *  r_view.hw + r_view.cx;
+    v[1] = v[1] * -r_view.hh + r_view.cy;
     v[2] = (1.0f - v[2]) * 65535.f;
 }
 
@@ -355,6 +393,7 @@ static void draw_clear(const u64 color) {
 
     if (old_zmask) gfx_ps2_set_depth_mask(true); // write Z on clear
     if (old_tests) update_tests(0, 1); // no alpha test, zpass=ALWAYS
+    if (r_clip.x0 || r_clip.y0) draw_set_scissor(0, 0, gs_global->Width - 1, gs_global->Height - 1); // clear whole screen
 
     u8 strips = gs_global->Width >> 6;
     const u8 remain = gs_global->Width & 63;
@@ -372,6 +411,7 @@ static void draw_clear(const u64 color) {
 
     if (old_zmask) gfx_ps2_set_depth_mask(false); // mask Z again
     if (old_tests) update_tests(a_test, z_test + (z_test && z_decal) + 1); // restore old tests
+    if (r_clip.x0 || r_clip.y0) draw_set_scissor(r_clip.x0, r_clip.y0, r_clip.x1, r_clip.y1); // restore clip
 }
 
 static inline void draw_triangles_tex_col(float buf_vbo[], const size_t buf_vbo_num_tris, const size_t vtx_stride, const size_t tri_stride) {
