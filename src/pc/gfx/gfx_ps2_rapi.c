@@ -103,11 +103,16 @@ static struct Viewport r_view;
 static bool z_test = true;
 static bool z_mask = false;
 static bool z_decal = false;
+static float z_offset = 0.f;
 
 static bool a_test = false;
 static bool do_blend = false;
 
 static const uint64_t c_white = GS_SETREG_RGBAQ(0x80, 0x80, 0x80, 0x80, 0x00);
+
+static inline float fclamp(const float v, const float min, const float max) {
+    return (v < min) ? min : (v > max) ? max : v;
+}
 
 static bool gfx_ps2_z_is_from_0_to_1(void) {
     return true;
@@ -214,6 +219,7 @@ static void gfx_ps2_set_depth_mask(bool z_upd) {
 
 static void gfx_ps2_set_zmode_decal(bool zmode_decal) {
     z_decal = zmode_decal;
+    z_offset = z_decal ? 16.f : 0.f;
 }
 
 static void gfx_ps2_set_viewport(int x, int y, int width, int height) {
@@ -234,7 +240,7 @@ static inline void draw_set_scissor(const int x0, const int y0, const int x1, co
     *p_data++ = GIF_AD;
 
     *p_data++ = GS_SETREG_SCISSOR_1(x0, x1, y0, y1);
-    *p_data++ = GS_SCISSOR_1;
+    *p_data++ = GS_SCISSOR_1 + gs_global->PrimContext;
 }
 
 static void gfx_ps2_set_scissor(int x, int y, int width, int height) {
@@ -264,7 +270,7 @@ static void gfx_ps2_set_use_alpha(bool use_alpha) {
 static inline void viewport_transform(float *v) {
     v[0] = v[0] *  r_view.hw + r_view.cx;
     v[1] = v[1] * -r_view.hh + r_view.cy;
-    v[2] = (1.0f - v[2]) * 65535.f;
+    v[2] = fclamp((1.0f - v[2]) * 65535.f + z_offset, 0.f, 65535.f);
 }
 
 // these are exactly the same as their regular varieties, but the mapping type is set to ST (UV / w)
