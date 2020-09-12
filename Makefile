@@ -257,15 +257,19 @@ endif
 
   # Use a default opt flag for gcc
   ifeq ($(COMPILER),gcc)
-    OPT_FLAGS := -O2 -g
+    OPT_FLAGS := -O2
   endif
 
 else
 ifeq ($(TARGET_WEB),1)
   OPT_FLAGS := -O2 -g4 --source-map-base http://localhost:8080/
 else
-  OPT_FLAGS := -O2 -g3
+  OPT_FLAGS := -O2
 endif
+endif
+
+ifeq ($(DEBUG),1)
+  OPT_FLAGS += -g
 endif
 
 # File dependencies and variables for specific files
@@ -475,7 +479,7 @@ ifeq ($(TARGET_WEB),1)
 endif
 ifeq ($(TARGET_PS2),1)
   PLATFORM_CFLAGS  := -DTARGET_PS2 -D_EE -G0 -I$(PS2SDK)/ee/include -I$(PS2SDK)/common/include -I$(GSKIT)/include
-  PLATFORM_LDFLAGS := -L$(GSKIT)/lib -lgskit_toolkit -lgskit -ldmakit -lpad -L$(PS2SDK)/ee/lib -lm -lc
+  PLATFORM_LDFLAGS := -L$(GSKIT)/lib -lgskit_toolkit -lgskit -ldmakit -lpad -L$(PS2SDK)/ee/lib -lpatches -lm -lc -lkernel
   PLATFORM_ASFLAGS := --32 -march=generic32
 endif
 
