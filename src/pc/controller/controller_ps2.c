@@ -84,12 +84,13 @@ static void controller_ps2_init(void) {
 
     const int numports = padGetPortMax();
 
-    for (int port = 0; port < numports; ++port) {
+    for (int port = 0; port < numports && joy_port < 0; ++port) {
         const int maxslots = padGetSlotMax(port);
         for (int slot = 0; slot < maxslots; ++slot) {
             if (padPortOpen(port, slot, padbuf) >= 0) {
                 joy_port = port;
                 joy_slot = slot;
+                printf("controller_ps2: using pad (%d, %d)\n", port, slot);
                 break;
             }
         }
