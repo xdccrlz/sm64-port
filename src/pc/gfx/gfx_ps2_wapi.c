@@ -1,6 +1,7 @@
 #ifdef TARGET_PS2
 
 #include <stdlib.h>
+#include <stdbool.h>
 #include <string.h>
 #include <kernel.h>
 #include <stdio.h>
@@ -13,6 +14,9 @@
 
 #include "gfx_window_manager_api.h"
 #include "gfx_screen_config.h"
+
+#define FRAMERATE_SHIFT 1
+#define FRAMESKIP 10
 
 struct VidMode {
     const char *name;
@@ -47,7 +51,11 @@ static struct VidMode *vid_mode;
 static unsigned int window_width = DESIRED_SCREEN_WIDTH;
 static unsigned int window_height = DESIRED_SCREEN_HEIGHT;
 
+static unsigned int last = 0;
+static bool do_render = true;
+
 static volatile unsigned int vblank_count = 0;
+static int vsync_callback_id = -1;
 
 static int vsync_callback(void) {
     gsKit_display_buffer(gs_global); // working buffer gets displayed
@@ -80,6 +88,8 @@ static void gfx_ps2_init(const char *game_name, bool start_in_fullscreen) {
 
     dmaKit_chan_init(DMA_CHANNEL_GIF);
 
+    vsync_callback_id = gsKit_add_vsync_handler(&vsync_callback);
+
     if (gsKit_detect_signal() == GS_MODE_NTSC)
         vid_mode = &vid_modes[0];
     else
@@ -110,8 +120,17 @@ static void gfx_ps2_set_keyboard_callbacks(bool (*on_key_down)(int scancode), bo
 }
 
 static void gfx_ps2_main_loop(void (*run_one_game_iter)(void)) {
-    while (1) {
-        run_one_game_iter();
+    const unsigned int now = vblank_count >> FRAMERATE_SHIFT;
+
+    const unsigned int frames = now - last;
+    if (frames) {
+        // catch up but skip the first FRAMESKIP frames
+        int skip = (frames > FRAMESKIP) ? FRAMESKIP : (frames - 1);
+        for (unsigned int f = 0; f < frames; ++f, --skip) {
+            do_render = (skip <= 0);
+            run_one_game_iter();
+        }
+        last = now;
     }
 }
 
@@ -125,11 +144,11 @@ static void gfx_ps2_handle_events(void) {
 }
 
 static bool gfx_ps2_start_frame(void) {
-    return true;
+    if (do_render) gsKit_sync_flip(gs_global);
+    return do_render;
 }
 
 static void gfx_ps2_swap_buffers_begin(void) {
-    gsKit_sync_flip(gs_global);
 }
 
 static void gfx_ps2_swap_buffers_end(void) {
