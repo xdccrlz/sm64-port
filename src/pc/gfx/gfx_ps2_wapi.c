@@ -3,10 +3,15 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
-#include <kernel.h>
 #include <stdio.h>
 #include <malloc.h>
+
+#include <tamtypes.h>
+#include <kernel.h>
+#include <iopheap.h>
+#include <iopcontrol.h>
 #include <sifrpc.h>
+#include <loadfile.h>
 #include <sbv_patches.h>
 
 #include <gsKit.h>
@@ -46,7 +51,7 @@ static const struct VidMode vid_modes[] = {
 
 GSGLOBAL *gs_global;
 
-static struct VidMode *vid_mode;
+static const struct VidMode *vid_mode;
 
 static unsigned int window_width = DESIRED_SCREEN_WIDTH;
 static unsigned int window_height = DESIRED_SCREEN_HEIGHT;

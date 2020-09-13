@@ -581,6 +581,7 @@ static void gfx_ps2_end_frame(void) {
 }
 
 static void gfx_ps2_finish_render(void) {
+    gsKit_TexManager_nextFrame(gs_global);
     gsKit_queue_reset(gs_global->Os_Queue);
 }
 
