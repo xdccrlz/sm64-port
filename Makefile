@@ -478,8 +478,14 @@ ifeq ($(TARGET_WEB),1)
   PLATFORM_LDFLAGS := -lm -no-pie -s TOTAL_MEMORY=20MB -g4 --source-map-base http://localhost:8080/ -s "EXTRA_EXPORTED_RUNTIME_METHODS=['callMain']"
 endif
 ifeq ($(TARGET_PS2),1)
-  PLATFORM_CFLAGS  := -DTARGET_PS2 -D_EE -G0 -I$(PS2SDK)/ee/include -I$(PS2SDK)/common/include -I$(GSKIT)/include
-  PLATFORM_LDFLAGS := -L$(GSKIT)/lib -lgskit_toolkit -lgskit -ldmakit -lpad -L$(PS2SDK)/ee/lib -lpatches -lm -lc -lkernel
+  AUDSRV     := ps2/ps2-audsrv
+  AUDSRV_IRX := $(BUILD_DIR)/audsrv_irx
+  AUDSRV_LIB := $(BUILD_DIR)/libaudsrv.a
+  FREESD_IRX := $(BUILD_DIR)/freesd_irx
+  C_FILES += $(AUDSRV_IRX).c $(FREESD_IRX).c
+  O_FILES += $(AUDSRV_IRX).o $(FREESD_IRX).o
+  PLATFORM_CFLAGS  := -DTARGET_PS2 -D_EE -G0 -I$(AUDSRV)/ee/rpc/audsrv/include -I$(PS2SDK)/ee/include -I$(PS2SDK)/common/include -I$(GSKIT)/include
+  PLATFORM_LDFLAGS := -L$(GSKIT)/lib -lgskit -ldmakit -lpad $(AUDSRV_LIB) -L$(PS2SDK)/ee/lib -ldma -lcdvd -lpatches -lm -lc -lkernel
   PLATFORM_ASFLAGS := --32 -march=generic32
 endif
 
@@ -563,8 +569,29 @@ else
 all: $(EXE)
 endif
 
+ifeq ($(TARGET_PS2),1)
+
+$(EXE): $(AUDSRV_LIB)
+
+$(FREESD_IRX).c:
+	$(PS2SDK)/bin/bin2c $(PS2SDK)/iop/irx/freesd.irx $@ ps2_freesd_irx
+
+$(AUDSRV_IRX).c: audsrv
+	$(PS2SDK)/bin/bin2c $(AUDSRV)/iop/sound/audsrv/irx/audsrv.irx $@ ps2_audsrv_irx
+
+$(AUDSRV_LIB): audsrv
+	cp -f $(AUDSRV)/ee/rpc/audsrv/lib/libaudsrv.a $@
+
+audsrv:
+	make -C $(AUDSRV)
+
+$(BUILD_DIR)/src/pc/audio/audio_ps2.o: $(AUDSRV_IRX).o $(FREESD_IRX).o
+
+endif
+
 clean:
 	$(RM) -r $(BUILD_DIR_BASE)
+	@make -C $(AUDSRV) clean
 
 distclean:
 	$(RM) -r $(BUILD_DIR_BASE)
