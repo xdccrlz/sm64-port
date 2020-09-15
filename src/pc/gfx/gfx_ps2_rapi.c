@@ -222,7 +222,6 @@ static void gfx_ps2_flush_textures(void) {
     last_tex = NULL;
     gsKit_TexManager_init(gs_global); // clear VRAM
     tex_pool_size = 0; // return to start of pool, new_texture will handle the rest
-    printf("gfx_ps2: FLUSH FLUSH FLUSH\n");
 }
 
 static inline uint32_t cm_to_ps2(const uint32_t val) {
