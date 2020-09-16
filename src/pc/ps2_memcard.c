@@ -1,0 +1,200 @@
+#ifdef TARGET_PS2
+
+#include <stdlib.h>
+#include <stdint.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
+#include <tamtypes.h>
+#include <kernel.h>
+#include <sifrpc.h>
+#include <loadfile.h>
+#include <malloc.h>
+#include <libmc.h>
+
+#include "ps2_memcard.h"
+
+#define ICN_FILE "sm64.icn"
+
+static int memcard_port = -1;
+static int memcard_type, memcard_free, memcard_format;
+
+static char save_path[64] = "mc0:" PS2_SAVE_PATH;
+static char save_file[64] = "mc0:" PS2_SAVE_PATH "/save.bin";
+static char save_meta[64] = "mc0:" PS2_SAVE_PATH "/icon.sys";
+static char save_icon[64] = "mc0:" PS2_SAVE_PATH "/" ICN_FILE;
+
+extern unsigned int size_ps2_icon_data;
+extern unsigned char ps2_icon_data;
+
+#define ALIGN1K(x) (((x) + 1023) >> 10)
+#define SAVE_SIZE (ALIGN1K(sizeof(mcIcon)) + ALIGN1K(size_ps2_icon_data) + 1 + 3) // in 1k blocks
+
+static inline bool check_save(const int port) {
+    save_meta[2] = '0' + port;
+    int fd = open(save_meta, O_RDONLY);
+    if (fd >= 0) {
+        close(fd);
+        return true;
+    }
+    return false;
+}
+
+static inline bool create_save(void) {
+    static const iconIVECTOR bgcolor[] = {
+        {  68,  23, 116,  0 }, // top left
+        { 255, 255, 255,  0 }, // top right
+        { 255, 255, 255,  0 }, // bottom left
+        {  68,  23, 116,  0 }, // bottom right
+    };
+
+    static const iconFVECTOR lightdir[] = {
+        { 0.5, 0.5, 0.5, 0.0 },
+        { 0.0,-0.4,-0.1, 0.0 },
+        {-0.5,-0.5, 0.5, 0.0 },
+    };
+
+    static const iconFVECTOR lightcol[] = {
+        { 0.3, 0.3, 0.3, 0.00 },
+        { 0.4, 0.4, 0.4, 0.00 },
+        { 0.5, 0.5, 0.5, 0.00 },
+    };
+
+    static const iconFVECTOR ambient = { 0.50, 0.50, 0.50, 0.00 };
+
+    mcIcon icon_sys;
+
+    memset(&icon_sys, 0, sizeof(mcIcon));
+    strcpy(icon_sys.head, "PS2D");
+    strcpy_sjis((short *)&icon_sys.title, "Super Mario 64");
+    icon_sys.nlOffset = 16;
+    icon_sys.trans = 0x60;
+    memcpy(icon_sys.bgCol, bgcolor, sizeof(bgcolor));
+    memcpy(icon_sys.lightDir, lightdir, sizeof(lightdir));
+    memcpy(icon_sys.lightCol, lightcol, sizeof(lightcol));
+    memcpy(icon_sys.lightAmbient, ambient, sizeof(ambient));
+    strcpy(icon_sys.view, ICN_FILE); // these filenames are relative to the directory
+    strcpy(icon_sys.copy, ICN_FILE); // in which icon.sys resides.
+    strcpy(icon_sys.del,  ICN_FILE);
+
+    // save the icon
+    int fd = open(save_icon, O_CREAT | O_WRONLY);
+    if (fd < 0) return false;
+    write(fd, &ps2_icon_data, size_ps2_icon_data);
+    close(fd);
+
+    // save the metadata
+    fd = open(save_meta, O_WRONLY | O_CREAT);
+    if (fd < 0) return false;
+    write(fd, &icon_sys, sizeof(icon_sys));
+    close(fd);
+
+    return true;
+}
+
+static inline void memcard_detect(void) {
+    // just pick the first memcard which has either the file or the free space for it
+    int ret;
+    for (int port = 0; port < 2; ++port) {
+        mcGetInfo(port, 0, &memcard_type, &memcard_free, &memcard_format);
+        mcSync(0, NULL, &ret);
+        if ((ret == 0 || ret == -1) && (memcard_free >= SAVE_SIZE || check_save(port))) {
+            memcard_port = port;
+            printf("ps2_memcard: detected memcard type %d free %d on port %d\n", memcard_type, memcard_free, memcard_port);
+            return;
+        }
+    }
+    printf("ps2_memcard: could not detect any memcards\n");
+}
+
+static inline bool memcard_check(void) {
+    int ret;
+    mcGetInfo(memcard_port, 0, &memcard_type, &memcard_free, &memcard_format);
+    mcSync(0, NULL, &ret);
+    if (ret != 0) {
+        printf("ps2_memcard: memcard lost, re-detecting\n");
+        memcard_port = -1;
+        memcard_detect();
+        return (memcard_port >= 0);
+    }
+    return true;
+}
+
+bool ps2_memcard_init(void) {
+    int ret = SifLoadModule("rom0:SIO2MAN", 0, NULL);
+    if (ret < 0) {
+        printf("ps2_memcard: failed to load SIO2MAN: %d\n", ret);
+        return false;
+    }
+
+    ret = SifLoadModule("rom0:MCMAN", 0, NULL);
+    if (ret < 0) {
+        printf("ps2_memcard: failed to load MCMAN: %d\n", ret);
+        return false;
+    }
+
+    ret = SifLoadModule("rom0:MCSERV", 0, NULL);
+    if (ret < 0) {
+        printf("ps2_memcard: failed to load MCSERV: %d\n", ret);
+        return false;
+    }
+
+    ret = mcInit(MC_TYPE_MC);
+    if (ret < 0) {
+        printf("ps2_memcard: mcInit failed: %d\n", ret);
+        return false;
+    }
+
+    printf("ps2_memcard: SAVE_SIZE = %u\n", SAVE_SIZE);
+
+    memcard_detect();
+
+    return true;
+}
+
+bool ps2_memcard_save(const void *data, const int ofs, const uint32_t size) {
+    if (!memcard_check()) return false;
+
+    save_path[2] = '0' + memcard_port;
+    save_file[2] = '0' + memcard_port;
+    save_meta[2] = '0' + memcard_port;
+    save_icon[2] = '0' + memcard_port;
+
+    if (!check_save(memcard_port)) {
+        // no save folder and icon, create it
+        mkdir(save_path, 0777);
+        if (!create_save()) return false;
+    }
+
+    int fd = open(save_file, O_WRONLY | O_CREAT);
+    if (fd < 0) return false;
+    if (lseek(fd, ofs, SEEK_SET) != (off_t)-1)
+        write(fd, data, size);
+    close(fd);
+
+    return true;
+}
+
+bool ps2_memcard_load(void *data, const int ofs, const uint32_t size) {
+    if (!memcard_check()) return false;
+
+    save_path[2] = '0' + memcard_port;
+    save_file[2] = '0' + memcard_port;
+    save_meta[2] = '0' + memcard_port;
+
+    if (!check_save(memcard_port)) return false;
+
+    int fd = open(save_file, O_RDONLY);
+    if (fd < 0) return false;
+    if (lseek(fd, ofs, SEEK_SET) != (off_t)-1)
+        read(fd, data, size);
+    close(fd);
+
+    return true;
+}
+
+#endif // TARGET_PS2

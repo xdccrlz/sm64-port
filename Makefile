@@ -482,10 +482,11 @@ ifeq ($(TARGET_PS2),1)
   AUDSRV_IRX := $(BUILD_DIR)/audsrv_irx
   AUDSRV_LIB := $(BUILD_DIR)/libaudsrv.a
   FREESD_IRX := $(BUILD_DIR)/freesd_irx
-  C_FILES += $(AUDSRV_IRX).c $(FREESD_IRX).c
-  O_FILES += $(AUDSRV_IRX).o $(FREESD_IRX).o
+  PS2_ICON   := ps2/sm64.icn
+  C_FILES += $(AUDSRV_IRX).c $(FREESD_IRX).c $(BUILD_DIR)/ps2_icon.c
+  O_FILES += $(AUDSRV_IRX).o $(FREESD_IRX).o $(BUILD_DIR)/ps2_icon.o
   PLATFORM_CFLAGS  := -DTARGET_PS2 -D_EE -G0 -I$(AUDSRV)/ee/rpc/audsrv/include -I$(PS2SDK)/ee/include -I$(PS2SDK)/common/include -I$(GSKIT)/include
-  PLATFORM_LDFLAGS := -L$(GSKIT)/lib -lgskit -ldmakit -lpad $(AUDSRV_LIB) -L$(PS2SDK)/ee/lib -ldma -lcdvd -lpatches -lm -lc -lkernel
+  PLATFORM_LDFLAGS := -L$(GSKIT)/lib -lgskit -ldmakit $(AUDSRV_LIB) -L$(PS2SDK)/ee/lib -lpad -lmc -ldma -lcdvd -lpatches -lm -lc -lkernel
   PLATFORM_ASFLAGS := --32 -march=generic32
 endif
 
@@ -578,6 +579,9 @@ $(FREESD_IRX).c:
 
 $(AUDSRV_IRX).c: audsrv
 	$(PS2SDK)/bin/bin2c $(AUDSRV)/iop/sound/audsrv/irx/audsrv.irx $@ ps2_audsrv_irx
+
+$(BUILD_DIR)/ps2_icon.c: $(PS2_ICON)
+	$(PS2SDK)/bin/bin2c $^ $@ ps2_icon_data
 
 $(AUDSRV_LIB): audsrv
 	cp -f $(AUDSRV)/ee/rpc/audsrv/lib/libaudsrv.a $@

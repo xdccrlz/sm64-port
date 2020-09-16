@@ -35,6 +35,17 @@
 
 #define CONFIG_FILE "sm64config.txt"
 
+#ifdef TARGET_PS2
+# include <tamtypes.h>
+# include <kernel.h>
+# include <iopheap.h>
+# include <iopcontrol.h>
+# include <sifrpc.h>
+# include <loadfile.h>
+# include <sbv_patches.h>
+# include "ps2_memcard.h"
+#endif
+
 OSMesg D_80339BEC;
 OSMesgQueue gSIEventMesgQueue;
 
@@ -142,6 +153,25 @@ static void on_fullscreen_changed(bool is_now_fullscreen) {
 
 void main_func(void) {
     static u64 pool[0x165000/8 / 4 * sizeof(void *)];
+
+#ifdef TARGET_PS2
+    // reset IOP and the RPC service
+    SifInitRpc(0);
+    while (!SifIopReset("", 0)) { };
+    while (!SifIopSync()) { };
+    SifInitRpc(0);
+
+    // initialize SIF services
+    SifLoadFileInit();
+    SifInitIopHeap();
+
+    // enable patch to make SifExecModuleBuffer work with the official LOADFILE module
+    sbv_patch_enable_lmb();
+
+    // init memory cards
+    ps2_memcard_init();
+#endif
+
     main_pool_init(pool, pool + sizeof(pool) / sizeof(pool[0]));
     gEffectsMemoryPool = mem_pool_init(0x4000, MEMORY_POOL_LEFT);
 

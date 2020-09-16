@@ -6,14 +6,7 @@
 #include <stdio.h>
 #include <malloc.h>
 
-#include <tamtypes.h>
 #include <kernel.h>
-#include <iopheap.h>
-#include <iopcontrol.h>
-#include <sifrpc.h>
-#include <loadfile.h>
-#include <sbv_patches.h>
-
 #include <gsKit.h>
 #include <dmaKit.h>
 
@@ -73,19 +66,6 @@ static int vsync_callback(void) {
 }
 
 static void gfx_ps2_init(const char *game_name, bool start_in_fullscreen) {
-    // reset IOP and the RPC service
-    SifInitRpc(0);
-    while (!SifIopReset("", 0)) { };
-    while (!SifIopSync()) { };
-    SifInitRpc(0);
-
-    // initialize SIF services
-    SifLoadFileInit();
-    SifInitIopHeap();
-
-    // enable patch to make SifExecModuleBuffer work with the official LOADFILE module
-    sbv_patch_enable_lmb();
-
     gs_global = gsKit_init_global();
 
     dmaKit_init(D_CTRL_RELE_OFF, D_CTRL_MFD_OFF, D_CTRL_STS_UNSPEC,

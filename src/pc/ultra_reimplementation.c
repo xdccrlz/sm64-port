@@ -7,6 +7,10 @@
 #include <emscripten.h>
 #endif
 
+#ifdef TARGET_PS2
+#include "ps2_memcard.h"
+#endif
+
 extern OSMgrArgs piMgrArgs;
 
 u64 osClockRate = 62500000;
@@ -146,6 +150,8 @@ s32 osEepromLongRead(UNUSED OSMesgQueue *mq, u8 address, u8 *buffer, int nbytes)
         ret = 0;
     }
 #elif defined(TARGET_PS2)
+    if (ps2_memcard_load(buffer, address * 8, nbytes))
+        ret = 0;
 #else
     FILE *fp = fopen("sm64_save_file.bin", "rb");
     if (fp == NULL) {
@@ -178,6 +184,8 @@ s32 osEepromLongWrite(UNUSED OSMesgQueue *mq, u8 address, u8 *buffer, int nbytes
     s32 ret = 0;
 #elif defined(TARGET_PS2)
     s32 ret = -1;
+    if (ps2_memcard_save(buffer, address * 8, nbytes))
+        ret = 0;
 #else
     FILE* fp = fopen("sm64_save_file.bin", "wb");
     if (fp == NULL) {
