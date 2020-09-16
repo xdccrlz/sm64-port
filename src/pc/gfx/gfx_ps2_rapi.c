@@ -278,9 +278,9 @@ static inline void draw_set_scissor(const int x0, const int y0, const int x1, co
 
 static void gfx_ps2_set_scissor(int x, int y, int width, int height) {
     r_clip.x0 = x;
-    r_clip.y0 = y;
-    r_clip.x1 = x + width - 1;
-    r_clip.y1 = y + height - 1;
+    r_clip.y0 = gs_global->Height - y - height;
+    r_clip.x1 = r_clip.x0 + width - 1;
+    r_clip.y1 = r_clip.y0 + height - 1;
     draw_set_scissor(r_clip.x0, r_clip.y0, r_clip.x1, r_clip.y1);
 }
 
@@ -533,7 +533,7 @@ static inline void draw_triangles_col(float buf_vbo[], const size_t buf_vbo_num_
     register float *p = buf_vbo;
     register size_t i;
 
-    const int cofs = (cur_shader->use_fog ? 5 : 4) + rgba_add;
+    const int cofs = 4 + cur_shader->use_fog + (cur_shader->num_inputs > 1) + rgba_add;
     for (i = 0; i < buf_vbo_num_tris; ++i, p += tri_stride) {
         v0 = p + 0;           viewport_transform(v0);
         v1 = v0 + vtx_stride; viewport_transform(v1);
