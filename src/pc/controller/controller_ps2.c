@@ -9,7 +9,7 @@
 
 #include "controller_api.h"
 
-#define DEADZONE    19
+#define DEADZONE    32
 #define DEADZONE_SQ (DEADZONE * DEADZONE)
 
 static u8 padbuf[256] __attribute__((aligned(64)));
