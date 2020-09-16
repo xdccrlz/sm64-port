@@ -149,6 +149,8 @@ static struct ShaderProgram *gfx_ps2_create_and_load_new_shader(uint32_t shader_
     prg->alpha_test = ccf.opt_texture_edge;
     if (shader_id == 0x01045A00 || shader_id == 0x01200A00 || shader_id == 0x0000038D)
         prg->tex_mode = TEXMODE_DECAL;
+    else if (shader_id == 0x01A00045)
+        prg->tex_mode = TEXMODE_REPLACE;
     else
         prg->tex_mode = TEXMODE_MODULATE;
 
@@ -380,7 +382,7 @@ static void gsKit_prim_triangle_goraud_texture_3d_st(GSGLOBAL *gsGlobal, GSTEXTU
     *p_data++ = GIF_TAG_TRIANGLE_GORAUD_TEXTURED(0);
     *p_data++ = GIF_TAG_TRIANGLE_GORAUD_TEXTURED_ST_REGS(gsGlobal->PrimContext);
 
-    const int replace = cur_shader->tex_mode == TEXMODE_REPLACE;
+    const int replace = 0; // cur_shader->tex_mode == TEXMODE_REPLACE;
     const int alpha = gsGlobal->PrimAlphaEnable;
 
     if (Texture->VramClut == 0) {
@@ -499,6 +501,33 @@ static inline void draw_triangles_tex_col(float buf_vbo[], const size_t buf_vbo_
         c0.rgba = ((u32 *)v0)[cofs]; c0.q = v0[3];
         c1.rgba = ((u32 *)v1)[cofs]; c1.q = v1[3];
         c2.rgba = ((u32 *)v2)[cofs]; c2.q = v2[3];
+        gsKit_prim_triangle_goraud_texture_3d_st(
+            gs_global, &cur_tex[0]->tex,
+            v0[0], v0[1], v0[2], v0[4], v0[5],
+            v1[0], v1[1], v1[2], v1[4], v1[5],
+            v2[0], v2[1], v2[2], v2[4], v2[5],
+            c0.word, c1.word, c2.word
+        );
+    }
+}
+
+static inline void draw_triangles_tex_col_texalpha(float buf_vbo[], const size_t buf_vbo_num_tris, const size_t vtx_stride, const size_t tri_stride) {
+    ColorQ c0 = (ColorQ) { { 0x00, 0x00, 0x00, 0x80, 1.f } };
+    ColorQ c1 = (ColorQ) { { 0x00, 0x00, 0x00, 0x80, 1.f } };
+    ColorQ c2 = (ColorQ) { { 0x00, 0x00, 0x00, 0x80, 1.f } };
+
+    register float *v0, *v1, *v2;
+    register float *p = buf_vbo;
+    register size_t i;
+
+    const int cofs = cur_shader->use_fog ? 7 : 6;
+    for (i = 0; i < buf_vbo_num_tris; ++i, p += tri_stride) {
+        v0 = p + 0;           viewport_transform(v0);
+        v1 = v0 + vtx_stride; viewport_transform(v1);
+        v2 = v1 + vtx_stride; viewport_transform(v2);
+        c0.rgba = ((u32 *)v0)[cofs]; c0.a = 0x80; c0.q = v0[3];
+        c1.rgba = ((u32 *)v1)[cofs]; c1.a = 0x80; c1.q = v1[3];
+        c2.rgba = ((u32 *)v2)[cofs]; c2.a = 0x80; c2.q = v2[3];
         gsKit_prim_triangle_goraud_texture_3d_st(
             gs_global, &cur_tex[0]->tex,
             v0[0], v0[1], v0[2], v0[4], v0[5],
@@ -697,6 +726,8 @@ static void gfx_ps2_draw_triangles(float buf_vbo[], size_t buf_vbo_len, size_t b
         if (cur_shader->num_inputs) {
             if (cur_shader->used_textures[1])
                 draw_triangles_tex_tex_col(buf_vbo, buf_vbo_num_tris, vtx_stride, tri_stride);
+            else if (cur_shader->tex_mode == TEXMODE_REPLACE)
+                draw_triangles_tex_col_texalpha(buf_vbo, buf_vbo_num_tris, vtx_stride, tri_stride);
             else if (cur_shader->tex_mode == TEXMODE_DECAL)
                 draw_triangles_tex_col_decal(buf_vbo, buf_vbo_num_tris, vtx_stride, tri_stride);
             else if (cur_shader->num_inputs > 1)
