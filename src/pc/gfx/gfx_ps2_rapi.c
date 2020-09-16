@@ -33,6 +33,14 @@
 // RGB = (A - B) * C + D = (Cs - Cd) * As + Cd -> normal blending, alpha 0-128
 #define BMODE_BLEND GS_SETREG_ALPHA(0, 1, 0, 1, 128)
 
+// A = 0 = Cs
+// B = 2 = 0
+// C = 1 = Ad
+// D = 1 = Cd
+// FIX =  128 (unused)
+// RGB = (A - B) * C + D = Cs * Ad + Cd -> additive-ish blending
+#define BMODE_ADD   GS_SETREG_ALPHA(0, 2, 1, 1, 128)
+
 extern GSGLOBAL *gs_global;
 
 enum TexMode {
@@ -284,11 +292,9 @@ static void gfx_ps2_set_scissor(int x, int y, int width, int height) {
     draw_set_scissor(r_clip.x0, r_clip.y0, r_clip.x1, r_clip.y1);
 }
 
-static void gfx_ps2_set_use_alpha(bool use_alpha) {
-    do_blend = use_alpha;
-
-    gs_global->PrimAlphaEnable = use_alpha;
-    gs_global->PrimAlpha = use_alpha ? BMODE_BLEND : 0;
+static inline void draw_set_blendmode(const u32 blend) {
+    gs_global->PrimAlphaEnable = !!blend;
+    gs_global->PrimAlpha = blend;
     gs_global->PABE = 0;
 
     u64 *p_data = gsKit_heap_alloc(gs_global, 1, 16, GIF_AD);
@@ -298,6 +304,11 @@ static void gfx_ps2_set_use_alpha(bool use_alpha) {
 
     *p_data++ = gs_global->PrimAlpha;
     *p_data++ = GS_ALPHA_1 + gs_global->PrimContext;
+}
+
+static void gfx_ps2_set_use_alpha(bool use_alpha) {
+    do_blend = use_alpha;
+    draw_set_blendmode(do_blend ? BMODE_BLEND : 0);
 }
 
 static inline void viewport_transform(float *v) {
@@ -533,7 +544,7 @@ static inline void draw_triangles_col(float buf_vbo[], const size_t buf_vbo_num_
     register float *p = buf_vbo;
     register size_t i;
 
-    const int cofs = 4 + cur_shader->use_fog + (cur_shader->num_inputs > 1) + rgba_add;
+    const int cofs = 4 + cur_shader->use_fog + rgba_add;
     for (i = 0; i < buf_vbo_num_tris; ++i, p += tri_stride) {
         v0 = p + 0;           viewport_transform(v0);
         v1 = v0 + vtx_stride; viewport_transform(v1);
@@ -591,6 +602,45 @@ static inline void draw_triangles_tex_col_decal(float buf_vbo[], const size_t bu
     update_tests(a_test, z_test + (z_test && z_decal) + 1);
 }
 
+static inline void draw_triangles_tex_col_col(float buf_vbo[], const size_t buf_vbo_num_tris, const size_t vtx_stride, const size_t tri_stride) {
+    // draw color base, color offset is 2 because we skip UVs
+    draw_triangles_col(buf_vbo, buf_vbo_num_tris, vtx_stride, tri_stride, 3);
+
+    // alpha test off, special blending on, ztest to GEQUAL
+    draw_set_blendmode(BMODE_ADD);
+    update_tests(0, 2);
+
+    // draw texture with blending on top, don't need to transform this time
+
+    ColorQ c0 = (ColorQ) { { 0x80, 0x80, 0x80, 0x80, 1.f } };
+    ColorQ c1 = (ColorQ) { { 0x80, 0x80, 0x80, 0x80, 1.f } };
+    ColorQ c2 = (ColorQ) { { 0x80, 0x80, 0x80, 0x80, 1.f } };
+
+    register float *v0, *v1, *v2;
+    register float *p = buf_vbo;
+    register size_t i;
+
+    for (i = 0; i < buf_vbo_num_tris; ++i, p += tri_stride) {
+        v0 = p + 0;
+        v1 = v0 + vtx_stride;
+        v2 = v1 + vtx_stride;
+        c0.rgba = ((u32 *)v0)[7]; c0.q = v0[3];
+        c1.rgba = ((u32 *)v1)[7]; c1.q = v1[3];
+        c2.rgba = ((u32 *)v2)[7]; c2.q = v2[3];
+        gsKit_prim_triangle_goraud_texture_3d_st(
+            gs_global, &cur_tex[0]->tex,
+            v0[0], v0[1], v0[2], v0[4], v0[5],
+            v1[0], v1[1], v1[2], v1[4], v1[5],
+            v2[0], v2[1], v2[2], v2[4], v2[5],
+            c0.word, c1.word, c2.word
+        );
+    }
+
+    // restore old state
+    gfx_ps2_set_use_alpha(do_blend);
+    update_tests(a_test, z_test + (z_test && z_decal) + 1);
+}
+
 static void gfx_ps2_draw_triangles(float buf_vbo[], size_t buf_vbo_len, size_t buf_vbo_num_tris) {
     const size_t vtx_stride = buf_vbo_len / (buf_vbo_num_tris * 3);
     const size_t tri_stride = vtx_stride * 3;
@@ -604,13 +654,15 @@ static void gfx_ps2_draw_triangles(float buf_vbo[], size_t buf_vbo_len, size_t b
         if (cur_shader->num_inputs) {
             if (cur_shader->tex_mode == TEXMODE_DECAL)
                 draw_triangles_tex_col_decal(buf_vbo, buf_vbo_num_tris, vtx_stride, tri_stride);
+            else if (cur_shader->num_inputs > 1)
+                draw_triangles_tex_col_col(buf_vbo, buf_vbo_num_tris, vtx_stride, tri_stride);
             else
                 draw_triangles_tex_col(buf_vbo, buf_vbo_num_tris, vtx_stride, tri_stride);
         } else {
             draw_triangles_tex(buf_vbo, buf_vbo_num_tris, vtx_stride, tri_stride);
         }
     } else if (cur_shader->num_inputs) {
-        draw_triangles_col(buf_vbo, buf_vbo_num_tris, vtx_stride, tri_stride, 0);
+        draw_triangles_col(buf_vbo, buf_vbo_num_tris, vtx_stride, tri_stride, (cur_shader->num_inputs > 1));
     }
 }
 

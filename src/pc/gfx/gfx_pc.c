@@ -972,7 +972,7 @@ static inline void gfx_push_triangle(const struct LoadedVertex *restrict v1, con
 
     const bool z_is_from_0_to_1 = gfx_rapi->z_is_from_0_to_1();
 
-    const bool solid_texture = use_texture && !comb->tex_decal;
+    const bool solid_texture = use_texture && !comb->tex_decal && (num_inputs < 2);
 
     for (int i = 0; i < 3; i++) {
         const float w = v_arr[i]->w;
