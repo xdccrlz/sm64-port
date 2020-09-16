@@ -9,7 +9,7 @@
 
 #include "controller_api.h"
 
-#define DEADZONE    32
+#define DEADZONE    24
 #define DEADZONE_SQ (DEADZONE * DEADZONE)
 
 static u8 padbuf[256] __attribute__((aligned(64)));
@@ -136,8 +136,8 @@ static void controller_ps2_read(OSContPad *pad) {
 
         const uint32_t lstick_mag = (u32)(lstick_x * lstick_x) + (u32)(lstick_y * lstick_y);
         if (lstick_mag > (u32)DEADZONE_SQ) {
-            pad->stick_x = lstick_x;
-            pad->stick_y = (lstick_y == -128) ? 127 : -lstick_y;
+            pad->stick_x = roundf(((float) lstick_x) / 128.f * 80.f);
+            pad->stick_y = roundf(((float)-lstick_y) / 128.f * 80.f);
         }
     }
 }
