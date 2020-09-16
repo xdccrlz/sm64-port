@@ -292,7 +292,7 @@ static void gfx_ps2_set_scissor(int x, int y, int width, int height) {
     draw_set_scissor(r_clip.x0, r_clip.y0, r_clip.x1, r_clip.y1);
 }
 
-static inline void draw_set_blendmode(const u32 blend) {
+static inline void draw_set_blendmode(const u64 blend) {
     gs_global->PrimAlphaEnable = !!blend;
     gs_global->PrimAlpha = blend;
     gs_global->PABE = 0;
@@ -641,6 +641,49 @@ static inline void draw_triangles_tex_col_col(float buf_vbo[], const size_t buf_
     update_tests(a_test, z_test + (z_test && z_decal) + 1);
 }
 
+static inline void draw_triangles_tex_tex_col(float buf_vbo[], const size_t buf_vbo_num_tris, const size_t vtx_stride, const size_t tri_stride) {
+    // draw base textire with plain white color
+    draw_triangles_tex(buf_vbo, buf_vbo_num_tris, vtx_stride, tri_stride);
+
+    // alpha test off, blending on, ztest to GEQUAL
+    if (!do_blend) draw_set_blendmode(BMODE_BLEND);
+    update_tests(0, 2);
+
+    // draw second texture with blending on top, don't need to transform this time
+    // however use color as alpha, since alpha is fixed at 1 in that shader
+
+    draw_set_clamp(cur_tex[1]->clamp_s, cur_tex[1]->clamp_t);
+    gsKit_TexManager_bind(gs_global, &cur_tex[1]->tex);
+
+    ColorQ c0 = (ColorQ) { { 0x80, 0x80, 0x80, 0x80, 1.f } };
+    ColorQ c1 = (ColorQ) { { 0x80, 0x80, 0x80, 0x80, 1.f } };
+    ColorQ c2 = (ColorQ) { { 0x80, 0x80, 0x80, 0x80, 1.f } };
+
+    register float *v0, *v1, *v2;
+    register float *p = buf_vbo;
+    register size_t i;
+
+    for (i = 0; i < buf_vbo_num_tris; ++i, p += tri_stride) {
+        v0 = p + 0;
+        v1 = v0 + vtx_stride;
+        v2 = v1 + vtx_stride;
+        c0.a = ((u32 *)v0)[6] & 0xFF; c0.q = v0[3];
+        c1.a = ((u32 *)v1)[6] & 0xFF; c1.q = v1[3];
+        c2.a = ((u32 *)v2)[6] & 0xFF; c2.q = v2[3];
+        gsKit_prim_triangle_goraud_texture_3d_st(
+            gs_global, &cur_tex[1]->tex,
+            v0[0], v0[1], v0[2], v0[4], v0[5],
+            v1[0], v1[1], v1[2], v1[4], v1[5],
+            v2[0], v2[1], v2[2], v2[4], v2[5],
+            c0.word, c1.word, c2.word
+        );
+    }
+
+    // restore old state
+    if (!do_blend) gfx_ps2_set_use_alpha(false);
+    update_tests(a_test, z_test + (z_test && z_decal) + 1);
+}
+
 static void gfx_ps2_draw_triangles(float buf_vbo[], size_t buf_vbo_len, size_t buf_vbo_num_tris) {
     const size_t vtx_stride = buf_vbo_len / (buf_vbo_num_tris * 3);
     const size_t tri_stride = vtx_stride * 3;
@@ -652,7 +695,9 @@ static void gfx_ps2_draw_triangles(float buf_vbo[], size_t buf_vbo_len, size_t b
         draw_set_clamp(cur_tex[0]->clamp_s, cur_tex[0]->clamp_t);
         gsKit_TexManager_bind(gs_global, &cur_tex[0]->tex);
         if (cur_shader->num_inputs) {
-            if (cur_shader->tex_mode == TEXMODE_DECAL)
+            if (cur_shader->used_textures[1])
+                draw_triangles_tex_tex_col(buf_vbo, buf_vbo_num_tris, vtx_stride, tri_stride);
+            else if (cur_shader->tex_mode == TEXMODE_DECAL)
                 draw_triangles_tex_col_decal(buf_vbo, buf_vbo_num_tris, vtx_stride, tri_stride);
             else if (cur_shader->num_inputs > 1)
                 draw_triangles_tex_col_col(buf_vbo, buf_vbo_num_tris, vtx_stride, tri_stride);
