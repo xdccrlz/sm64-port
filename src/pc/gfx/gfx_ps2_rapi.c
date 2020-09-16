@@ -49,6 +49,16 @@ enum TexMode {
     TEXMODE_REPLACE,
 };
 
+enum DrawFunc {
+    DRAW_COL0,
+    DRAW_TEX0,
+    DRAW_TEX0_COL0,
+    DRAW_TEX0_COL0_DECAL,
+    DRAW_TEX0_COL0_TEXA,
+    DRAW_TEX0_COL0_COL1,
+    DRAW_TEX0_TEX1_COL0,
+};
+
 typedef union TexCoord { 
     struct {
         float s, t;
@@ -73,6 +83,7 @@ struct ShaderProgram {
     bool use_fog;
     bool alpha_test;
     enum TexMode tex_mode;
+    enum DrawFunc draw_fn;
 };
 
 struct Texture {
@@ -147,12 +158,32 @@ static struct ShaderProgram *gfx_ps2_create_and_load_new_shader(uint32_t shader_
     prg->use_alpha = ccf.opt_alpha;
     prg->use_fog = ccf.opt_fog;
     prg->alpha_test = ccf.opt_texture_edge;
+
     if (shader_id == 0x01045A00 || shader_id == 0x01200A00 || shader_id == 0x0000038D)
         prg->tex_mode = TEXMODE_DECAL;
     else if (shader_id == 0x01A00045)
         prg->tex_mode = TEXMODE_REPLACE;
     else
         prg->tex_mode = TEXMODE_MODULATE;
+
+    if (prg->used_textures[0]) {
+        if (prg->num_inputs) {
+            if (prg->used_textures[1])
+                prg->draw_fn = DRAW_TEX0_TEX1_COL0;
+            else if (prg->tex_mode == TEXMODE_REPLACE)
+                prg->draw_fn = DRAW_TEX0_COL0_TEXA;
+            else if (prg->tex_mode == TEXMODE_DECAL)
+                prg->draw_fn = DRAW_TEX0_COL0_DECAL;
+            else if (prg->num_inputs > 1)
+                prg->draw_fn = DRAW_TEX0_COL0_COL1;
+            else
+                prg->draw_fn = DRAW_TEX0_COL0;
+        } else {
+            prg->draw_fn = DRAW_TEX0;
+        }
+    } else if (prg->num_inputs) {
+        prg->draw_fn = DRAW_COL0;
+    }
 
     gfx_ps2_load_shader(prg);
 
@@ -538,32 +569,6 @@ static inline void draw_triangles_tex_col_texalpha(float buf_vbo[], const size_t
     }
 }
 
-static inline void draw_triangles_tex(float buf_vbo[], const size_t buf_vbo_num_tris, const size_t vtx_stride, const size_t tri_stride) {
-    ColorQ c0 = (ColorQ) { { 0x80, 0x80, 0x80, 0x80, 1.f } };
-    ColorQ c1 = (ColorQ) { { 0x80, 0x80, 0x80, 0x80, 1.f } };
-    ColorQ c2 = (ColorQ) { { 0x80, 0x80, 0x80, 0x80, 1.f } };
-
-    register float *v0, *v1, *v2;
-    register float *p = buf_vbo;
-    register size_t i;
-
-    for (i = 0; i < buf_vbo_num_tris; ++i, p += tri_stride) {
-        v0 = p + 0;           viewport_transform(v0);
-        v1 = v0 + vtx_stride; viewport_transform(v1);
-        v2 = v1 + vtx_stride; viewport_transform(v2);
-        c0.q = v0[3];
-        c1.q = v1[3];
-        c2.q = v2[3];
-        gsKit_prim_triangle_goraud_texture_3d_st(
-            gs_global, &cur_tex[0]->tex,
-            v0[0], v0[1], v0[2], v0[4], v0[5],
-            v1[0], v1[1], v1[2], v1[4], v1[5],
-            v2[0], v2[1], v2[2], v2[4], v2[5],
-            c0.word, c1.word, c2.word
-        );
-    }
-}
-
 static inline void draw_triangles_col(float buf_vbo[], const size_t buf_vbo_num_tris, const size_t vtx_stride, const size_t tri_stride, const size_t rgba_add) {
     ColorQ c0 = (ColorQ) { { 0x80, 0x80, 0x80, 0x80, 1.f } };
     ColorQ c1 = (ColorQ) { { 0x80, 0x80, 0x80, 0x80, 1.f } };
@@ -591,7 +596,33 @@ static inline void draw_triangles_col(float buf_vbo[], const size_t buf_vbo_num_
     }
 }
 
-static inline void draw_triangles_tex_col_decal(float buf_vbo[], const size_t buf_vbo_num_tris, const size_t vtx_stride, const size_t tri_stride) {
+static void draw_triangles_tex(float buf_vbo[], const size_t buf_vbo_num_tris, const size_t vtx_stride, const size_t tri_stride) {
+    ColorQ c0 = (ColorQ) { { 0x80, 0x80, 0x80, 0x80, 1.f } };
+    ColorQ c1 = (ColorQ) { { 0x80, 0x80, 0x80, 0x80, 1.f } };
+    ColorQ c2 = (ColorQ) { { 0x80, 0x80, 0x80, 0x80, 1.f } };
+
+    register float *v0, *v1, *v2;
+    register float *p = buf_vbo;
+    register size_t i;
+
+    for (i = 0; i < buf_vbo_num_tris; ++i, p += tri_stride) {
+        v0 = p + 0;           viewport_transform(v0);
+        v1 = v0 + vtx_stride; viewport_transform(v1);
+        v2 = v1 + vtx_stride; viewport_transform(v2);
+        c0.q = v0[3];
+        c1.q = v1[3];
+        c2.q = v2[3];
+        gsKit_prim_triangle_goraud_texture_3d_st(
+            gs_global, &cur_tex[0]->tex,
+            v0[0], v0[1], v0[2], v0[4], v0[5],
+            v1[0], v1[1], v1[2], v1[4], v1[5],
+            v2[0], v2[1], v2[2], v2[4], v2[5],
+            c0.word, c1.word, c2.word
+        );
+    }
+}
+
+static void draw_triangles_tex_col_decal(float buf_vbo[], const size_t buf_vbo_num_tris, const size_t vtx_stride, const size_t tri_stride) {
     // draw color base, color offset is 2 because we skip UVs
     draw_triangles_col(buf_vbo, buf_vbo_num_tris, vtx_stride, tri_stride, 2);
 
@@ -631,7 +662,7 @@ static inline void draw_triangles_tex_col_decal(float buf_vbo[], const size_t bu
     update_tests(a_test, z_test + (z_test && z_decal) + 1);
 }
 
-static inline void draw_triangles_tex_col_col(float buf_vbo[], const size_t buf_vbo_num_tris, const size_t vtx_stride, const size_t tri_stride) {
+static void draw_triangles_tex_col_col(float buf_vbo[], const size_t buf_vbo_num_tris, const size_t vtx_stride, const size_t tri_stride) {
     // draw color base, color offset is 2 because we skip UVs
     draw_triangles_col(buf_vbo, buf_vbo_num_tris, vtx_stride, tri_stride, 3);
 
@@ -670,7 +701,7 @@ static inline void draw_triangles_tex_col_col(float buf_vbo[], const size_t buf_
     update_tests(a_test, z_test + (z_test && z_decal) + 1);
 }
 
-static inline void draw_triangles_tex_tex_col(float buf_vbo[], const size_t buf_vbo_num_tris, const size_t vtx_stride, const size_t tri_stride) {
+static void draw_triangles_tex_tex_col(float buf_vbo[], const size_t buf_vbo_num_tris, const size_t vtx_stride, const size_t tri_stride) {
     // draw base textire with plain white color
     draw_triangles_tex(buf_vbo, buf_vbo_num_tris, vtx_stride, tri_stride);
 
@@ -723,22 +754,16 @@ static void gfx_ps2_draw_triangles(float buf_vbo[], size_t buf_vbo_len, size_t b
     if (cur_shader->used_textures[0]) {
         draw_set_clamp(cur_tex[0]->clamp_s, cur_tex[0]->clamp_t);
         gsKit_TexManager_bind(gs_global, &cur_tex[0]->tex);
-        if (cur_shader->num_inputs) {
-            if (cur_shader->used_textures[1])
-                draw_triangles_tex_tex_col(buf_vbo, buf_vbo_num_tris, vtx_stride, tri_stride);
-            else if (cur_shader->tex_mode == TEXMODE_REPLACE)
-                draw_triangles_tex_col_texalpha(buf_vbo, buf_vbo_num_tris, vtx_stride, tri_stride);
-            else if (cur_shader->tex_mode == TEXMODE_DECAL)
-                draw_triangles_tex_col_decal(buf_vbo, buf_vbo_num_tris, vtx_stride, tri_stride);
-            else if (cur_shader->num_inputs > 1)
-                draw_triangles_tex_col_col(buf_vbo, buf_vbo_num_tris, vtx_stride, tri_stride);
-            else
-                draw_triangles_tex_col(buf_vbo, buf_vbo_num_tris, vtx_stride, tri_stride);
-        } else {
-            draw_triangles_tex(buf_vbo, buf_vbo_num_tris, vtx_stride, tri_stride);
-        }
-    } else if (cur_shader->num_inputs) {
-        draw_triangles_col(buf_vbo, buf_vbo_num_tris, vtx_stride, tri_stride, (cur_shader->num_inputs > 1));
+    }
+
+    switch (cur_shader->draw_fn) {
+        case DRAW_TEX0_TEX1_COL0:  draw_triangles_tex_tex_col(buf_vbo, buf_vbo_num_tris, vtx_stride, tri_stride); break;
+        case DRAW_TEX0_COL0_COL1:  draw_triangles_tex_col_col(buf_vbo, buf_vbo_num_tris, vtx_stride, tri_stride); break;
+        case DRAW_TEX0_COL0_TEXA:  draw_triangles_tex_col_texalpha(buf_vbo, buf_vbo_num_tris, vtx_stride, tri_stride); break;
+        case DRAW_TEX0_COL0_DECAL: draw_triangles_tex_col_decal(buf_vbo, buf_vbo_num_tris, vtx_stride, tri_stride); break;
+        case DRAW_TEX0_COL0:       draw_triangles_tex_col(buf_vbo, buf_vbo_num_tris, vtx_stride, tri_stride); break;
+        case DRAW_TEX0:            draw_triangles_tex(buf_vbo, buf_vbo_num_tris, vtx_stride, tri_stride); break;
+        default:                   draw_triangles_col(buf_vbo, buf_vbo_num_tris, vtx_stride, tri_stride, (cur_shader->num_inputs > 1)); break;
     }
 }
 
