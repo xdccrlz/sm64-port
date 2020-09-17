@@ -113,6 +113,12 @@ static inline void memcard_detect(void) {
 
 static inline bool memcard_check(void) {
     int ret;
+
+    if (memcard_port < 0) {
+        memcard_detect();
+        return (memcard_port >= 0);
+    }
+
     mcGetInfo(memcard_port, 0, &memcard_type, &memcard_free, &memcard_format);
     mcSync(0, NULL, &ret);
     if (ret != 0) {
@@ -121,6 +127,7 @@ static inline bool memcard_check(void) {
         memcard_detect();
         return (memcard_port >= 0);
     }
+
     return true;
 }
 
