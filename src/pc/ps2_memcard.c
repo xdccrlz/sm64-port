@@ -15,9 +15,11 @@
 #include <loadfile.h>
 #include <malloc.h>
 #include <libmc.h>
+#include <sjis.h>
 
 #include "ps2_memcard.h"
 
+#define MAX_PORTS 2
 #define ICN_FILE "sm64.icn"
 
 static int memcard_port = -1;
@@ -70,7 +72,7 @@ static inline bool create_save(void) {
 
     memset(&icon_sys, 0, sizeof(mcIcon));
     strcpy(icon_sys.head, "PS2D");
-    strcpy_sjis((short *)&icon_sys.title, "Super Mario 64");
+    strcpy_sjis((short *)&icon_sys.title, "Super\nMario 64");
     icon_sys.nlOffset = 16;
     icon_sys.trans = 0x60;
     memcpy(icon_sys.bgCol, bgcolor, sizeof(bgcolor));
@@ -97,18 +99,40 @@ static inline bool create_save(void) {
 }
 
 static inline void memcard_detect(void) {
-    // just pick the first memcard which has either the file or the free space for it
+    int mctype[MAX_PORTS], mcfree[MAX_PORTS], mcformat[MAX_PORTS];
+    int freeport = -1;
     int ret;
-    for (int port = 0; port < 2; ++port) {
-        mcGetInfo(port, 0, &memcard_type, &memcard_free, &memcard_format);
+
+    // try looking for the save file, remember the first card with enough free space in case there's no save
+
+    for (int port = 0; port < MAX_PORTS; ++port) {
+        mcGetInfo(port, 0, mctype + port, mcfree + port, mcformat + port);
         mcSync(0, NULL, &ret);
-        if ((ret == 0 || ret == -1) && (memcard_free >= SAVE_SIZE || check_save(port))) {
-            memcard_port = port;
-            printf("ps2_memcard: detected memcard type %d free %d on port %d\n", memcard_type, memcard_free, memcard_port);
-            return;
+        if (ret == 0 || ret == -1) {
+            mcformat[port] = (ret == 0);
+            if (check_save(port)) {
+                memcard_port = port;
+                memcard_type = mctype[port];
+                memcard_free = mcfree[port];
+                memcard_format = mcformat[port];
+                printf("ps2_memcard: detected save on memcard type %d free %d on port %d\n", memcard_type, memcard_free, memcard_port);
+                return;
+            } else if (freeport == -1 && mcformat[port] && mcfree[port] >= SAVE_SIZE) {
+                freeport = port;
+            }
         }
     }
-    printf("ps2_memcard: could not detect any memcards\n");
+
+    // no save, check if we found free space
+    if (freeport >= 0) {
+        memcard_port = freeport;
+        memcard_type = mctype[freeport];
+        memcard_free = mcfree[freeport];
+        memcard_format = mcformat[freeport];
+        printf("ps2_memcard: detected memcard type %d free %d on port %d\n", memcard_type, memcard_free, memcard_port);
+    } else {
+        printf("ps2_memcard: could not detect any usable memcards\n");
+    }
 }
 
 static inline bool memcard_check(void) {
