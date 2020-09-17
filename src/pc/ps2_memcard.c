@@ -109,7 +109,7 @@ static inline void memcard_detect(void) {
         mcGetInfo(port, 0, mctype + port, mcfree + port, mcformat + port);
         mcSync(0, NULL, &ret);
         if (ret == 0 || ret == -1) {
-            mcformat[port] = (ret == 0);
+            mcformat[port] = 1; // -2 means it's unformatted, which can't happen here
             if (check_save(port)) {
                 memcard_port = port;
                 memcard_type = mctype[port];
