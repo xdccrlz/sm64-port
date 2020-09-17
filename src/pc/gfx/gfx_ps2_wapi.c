@@ -106,8 +106,10 @@ static void gfx_ps2_set_keyboard_callbacks(bool (*on_key_down)(int scancode), bo
 
 static void gfx_ps2_main_loop(void (*run_one_game_iter)(void)) {
     const unsigned int now = vblank_count >> FRAMERATE_SHIFT;
+    if (!last) last = now;
 
     const unsigned int frames = now - last;
+
     if (frames) {
         // catch up but skip the first FRAMESKIP frames
         int skip = (frames > FRAMESKIP) ? FRAMESKIP : (frames - 1);
