@@ -366,6 +366,13 @@ static void gfx_ps3_set_depth_mask(bool z_upd) {
 
 static void gfx_ps3_set_zmode_decal(bool zmode_decal) {
     rsx_env.z_decal = zmode_decal;
+    if (zmode_decal) {
+        rsxSetPolygonOffsetFillEnable(rsx_ctx, GCM_TRUE);
+        rsxSetPolygonOffset(rsx_ctx, -2, -2);
+    } else {
+        rsxSetPolygonOffsetFillEnable(rsx_ctx, GCM_FALSE);
+        rsxSetPolygonOffset(rsx_ctx, 0, 0);
+    }
 }
 
 static void gfx_ps3_set_viewport(int x, int y, int width, int height) {
@@ -410,10 +417,18 @@ static inline void draw_set_environment(void) {
 
     rsxSetScissor(rsx_ctx, rsx_env.clip.x, rsx_env.clip.y, rsx_env.clip.w, rsx_env.clip.h);
 
+    if (rsx_env.z_decal) {
+        rsxSetPolygonOffsetFillEnable(rsx_ctx, GCM_TRUE);
+        rsxSetPolygonOffset(rsx_ctx, -2, -2);
+    } else {
+        rsxSetPolygonOffsetFillEnable(rsx_ctx, GCM_FALSE);
+        rsxSetPolygonOffset(rsx_ctx, 0, 0);
+    }
+
     // some stuff that rarely changes
 
     rsxSetBlendFunc(rsx_ctx, GCM_SRC_ALPHA, GCM_ONE_MINUS_SRC_ALPHA, GCM_SRC_ALPHA, GCM_ONE_MINUS_SRC_ALPHA);
-    rsxSetDepthFunc(rsx_ctx, GCM_LESS);
+    rsxSetDepthFunc(rsx_ctx, GCM_LEQUAL);
     rsxSetShadeModel(rsx_ctx, GCM_SHADE_MODEL_SMOOTH);
     rsxSetColorMask(
         rsx_ctx,
