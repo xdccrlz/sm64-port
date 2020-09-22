@@ -27,7 +27,11 @@ struct GdColour {
 union DynUnion {
     void *ptr;
     char *str;
+#ifdef TARGET_PS3
+    s64 word; // big endian 64-bit powerpc
+#else
     s32 word;
+#endif
 };
 
 struct DynList {

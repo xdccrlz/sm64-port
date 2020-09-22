@@ -1,0 +1,9 @@
+void main(
+  float4 vInput1 : COLOR0
+, out float4 outColor : COLOR
+) {
+float4 texel = vInput1;
+if (texel.a > 0.3) texel.a = 1.0; else discard;
+outColor = texel;
+}
+

@@ -17,12 +17,14 @@
 #include "gfx/gfx_dxgi.h"
 #include "gfx/gfx_glx.h"
 #include "gfx/gfx_sdl.h"
+#include "gfx/gfx_ps3.h"
 
 #include "audio/audio_api.h"
 #include "audio/audio_wasapi.h"
 #include "audio/audio_pulse.h"
 #include "audio/audio_alsa.h"
 #include "audio/audio_sdl.h"
+#include "audio/audio_ps3.h"
 #include "audio/audio_null.h"
 
 #include "controller/controller_keyboard.h"
@@ -158,6 +160,9 @@ void main_func(void) {
 #elif defined(ENABLE_DX11)
     rendering_api = &gfx_direct3d11_api;
     wm_api = &gfx_dxgi_api;
+#elif defined(TARGET_PS3)
+    rendering_api = &gfx_ps3_rapi;
+    wm_api = &gfx_ps3_wapi;
 #elif defined(ENABLE_OPENGL)
     rendering_api = &gfx_opengl_api;
     #if defined(__linux__) || defined(__BSD__)
@@ -167,7 +172,7 @@ void main_func(void) {
     #endif
 #endif
 
-    gfx_init(wm_api, rendering_api, "Super Mario 64 PC-Port", configFullscreen);
+    gfx_init(wm_api, rendering_api, "Super Mario 64", configFullscreen);
     
     wm_api->set_fullscreen_changed_callback(on_fullscreen_changed);
     wm_api->set_keyboard_callbacks(keyboard_on_key_down, keyboard_on_key_up, keyboard_on_all_keys_up);
@@ -190,6 +195,11 @@ void main_func(void) {
 #ifdef TARGET_WEB
     if (audio_api == NULL && audio_sdl.init()) {
         audio_api = &audio_sdl;
+    }
+#endif
+#ifdef TARGET_PS3
+    if (audio_api == NULL && audio_ps3.init()) {
+        audio_api = &audio_ps3;
     }
 #endif
     if (audio_api == NULL) {

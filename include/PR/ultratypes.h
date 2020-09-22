@@ -5,8 +5,18 @@
 #define NULL    (void *)0
 #endif
 
+#ifndef TRUE
 #define TRUE 1
 #define FALSE 0
+#endif
+
+#ifdef TARGET_PS3
+
+// again with this shit
+#include <unistd.h>
+#include <ppu-types.h>
+
+#else
 
 typedef signed char            s8;
 typedef unsigned char          u8;
@@ -42,5 +52,7 @@ typedef volatile s8   vs8;
 typedef volatile s16 vs16;
 typedef volatile s32 vs32;
 typedef volatile s64 vs64;
+
+#endif // TARGET_PS3
 
 #endif

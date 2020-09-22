@@ -16,10 +16,16 @@
 #include "controller_wup.h"
 #endif
 
+#ifdef TARGET_PS3
+#include "controller_ps3.h"
+#endif
+
 static struct ControllerAPI *controller_implementations[] = {
     &controller_recorded_tas,
 #if defined(_WIN32) || defined(_WIN64)
     &controller_xinput,
+#elif defined (TARGET_PS3)
+    &controller_ps3,
 #else
     &controller_sdl,
 #endif

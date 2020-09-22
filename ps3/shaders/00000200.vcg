@@ -1,0 +1,10 @@
+void main(
+  float4 aPosition : POSITION
+, float3 aInput1 : COLOR0
+, float4 out vPosition : POSITION
+, float3 out vInput1 : COLOR0
+) {
+vInput1 = aInput1;
+vPosition = aPosition.xyzw;
+}
+

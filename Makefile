@@ -21,6 +21,8 @@ NON_MATCHING ?= 0
 TARGET_N64 ?= 0
 # Build for Emscripten/WebGL
 TARGET_WEB ?= 0
+# Build for PS3
+TARGET_PS3 ?= 1
 # Compiler to use (ido or gcc)
 COMPILER ?= ido
 
@@ -30,7 +32,7 @@ ifeq ($(TARGET_N64),0)
   NON_MATCHING := 1
   GRUCODE := f3dex2e
   TARGET_WINDOWS := 0
-  ifeq ($(TARGET_WEB),0)
+  ifeq ($(TARGET_WEB)$(TARGET_PS3),00)
     ifeq ($(OS),Windows_NT)
       TARGET_WINDOWS := 1
     else
@@ -46,7 +48,7 @@ ifeq ($(TARGET_N64),0)
         ENABLE_DX11 ?= 1
       endif
     endif
-  else
+  else ifneq ($(TARGET_PS3),1)
     # On others, default to OpenGL
     ENABLE_OPENGL ?= 1
   endif
@@ -190,23 +192,24 @@ endif
 BUILD_DIR_BASE := build
 ifeq ($(TARGET_N64),1)
   BUILD_DIR := $(BUILD_DIR_BASE)/$(VERSION)
-else
-ifeq ($(TARGET_WEB),1)
+else ifeq ($(TARGET_WEB),1)
   BUILD_DIR := $(BUILD_DIR_BASE)/$(VERSION)_web
+else ifeq ($(TARGET_PS3),1)
+  BUILD_DIR := $(BUILD_DIR_BASE)/$(VERSION)_ps3
 else
   BUILD_DIR := $(BUILD_DIR_BASE)/$(VERSION)_pc
-endif
 endif
 
 LIBULTRA := $(BUILD_DIR)/libultra.a
 ifeq ($(TARGET_WEB),1)
-EXE := $(BUILD_DIR)/$(TARGET).html
+  EXE := $(BUILD_DIR)/$(TARGET).html
+else ifeq ($(TARGET_WINDOWS),1)
+  EXE := $(BUILD_DIR)/$(TARGET).exe
+else ifeq ($(TARGET_PS3),1)
+  EXE := $(BUILD_DIR)/$(TARGET).elf
+  EXE_SELF := $(BUILD_DIR)/$(TARGET).self
 else
-ifeq ($(TARGET_WINDOWS),1)
-EXE := $(BUILD_DIR)/$(TARGET).exe
-else
-EXE := $(BUILD_DIR)/$(TARGET)
-endif
+  EXE := $(BUILD_DIR)/$(TARGET)
 endif
 ROM := $(BUILD_DIR)/$(TARGET).z64
 ELF := $(BUILD_DIR)/$(TARGET).elf
@@ -423,21 +426,85 @@ export LANG := C
 
 else # TARGET_N64
 
-AS := as
-ifneq ($(TARGET_WEB),1)
-  CC := gcc
-  CXX := g++
-else
-  CC := emcc
-endif
-ifeq ($(TARGET_WINDOWS),1)
-  LD := $(CXX)
-else
-  LD := $(CC)
-endif
-CPP := cpp -P
-OBJDUMP := objdump
-OBJCOPY := objcopy
+ifeq ($(TARGET_PS3),1)
+
+  ifeq ($(PSL1GHT),)
+    $(error PSL1GHT is not defined)
+  endif
+
+  PPU_PREFIX  ?= ppu-
+
+  CC      = $(PPU_PREFIX)gcc
+  CXX     = $(PPU_PREFIX)g++
+  CPP     = $(PPU_PREFIX)cpp -P
+  AS      = $(PPU_PREFIX)as
+  LD      = $(PPU_PREFIX)gcc
+  AR      = $(PPU_PREFIX)ar
+  OBJCOPY = $(PPU_PREFIX)objcopy
+  OBJDUMP = $(PPU_PREFIX)objdump
+  STRIP   = $(PPU_PREFIX)strip
+
+  PKG         = pkg.py
+  SFO         = sfo.py
+  SPRX        = sprxlinker
+  CGCOMP      = cgcomp
+  PS3LOADAPP  = ps3load
+  FSELF       = fself
+  FSELF_NPDRM = $(FSELF) -n
+  SELF        = make_self
+  SELF_NPDRM  = make_self_npdrm
+  PACKAGE_FINALIZE = package_finalize
+  BIN2S       = $(PSL1GHT)/bin/bin2s
+
+  TITLE     := Super Mario 64
+  APPID     := SM640001
+  CONTENTID := UP0001-$(APPID)_00-0000000000000000
+  SFOXML    := $(PS3DEV)/bin/sfo.xml
+  ICON0     := $(PS3DEV)/bin/ICON0.PNG
+
+  MACHDEP   := -mhard-float -fmodulo-sched -ffunction-sections -fdata-sections
+
+  SHADER_DIR := ps3/shaders
+
+  VCG_FILES := $(wildcard $(SHADER_DIR)/*.vcg)
+  FCG_FILES := $(wildcard $(SHADER_DIR)/*.fcg)
+
+  VPO_FILES := $(foreach file,$(VCG_FILES),$(BUILD_DIR)/$(file:.vcg=.vpo))
+  FPO_FILES := $(foreach file,$(FCG_FILES),$(BUILD_DIR)/$(file:.fcg=.fpo))
+
+  VPO_O_FILES := $(foreach file,$(VPO_FILES),$(file:.vpo=.vpo.o))
+  FPO_O_FILES := $(foreach file,$(FPO_FILES),$(file:.fpo=.fpo.o))
+
+  O_FILES += $(VPO_O_FILES) $(FPO_O_FILES)
+
+  SHADERDB_FILE := $(BUILD_DIR)/ps3_shader_db.h
+
+ 	CGCFLAGS := $(CGCFLAGS) -Wcg,-strict
+
+  define shbin2o
+    @$(BIN2S) -a 64 $< | $(AS) -o $(@)
+  endef
+
+else # TARGET_PS3
+
+  AS := as
+  ifneq ($(TARGET_WEB),1)
+    CC := gcc
+    CXX := g++
+  else
+    CC := emcc
+  endif
+  ifeq ($(TARGET_WINDOWS),1)
+    LD := $(CXX)
+  else
+    LD := $(CC)
+  endif
+  CPP := cpp -P
+  OBJDUMP := objdump
+  OBJCOPY := objcopy
+
+endif # TARGET_PS3
+
 PYTHON := python3
 
 # Platform-specific compiler and linker flags
@@ -452,6 +519,10 @@ endif
 ifeq ($(TARGET_WEB),1)
   PLATFORM_CFLAGS  := -DTARGET_WEB
   PLATFORM_LDFLAGS := -lm -no-pie -s TOTAL_MEMORY=20MB -g4 --source-map-base http://localhost:8080/ -s "EXTRA_EXPORTED_RUNTIME_METHODS=['callMain']"
+endif
+ifeq ($(TARGET_PS3),1)
+  PLATFORM_CFLAGS  := -mcpu=cell $(MACHDEP) -DTARGET_PS3 -I$(PSL1GHT)/ppu/include -I$(PSL1GHT)/ppu/include/simdmath
+  PLATFORM_LDFLAGS := $(MACHDEP) -L$(PSL1GHT)/ppu/lib -lsimdmath -lrsx -lgcm_sys -lio -lsysutil -lrt -llv2 -lm
 endif
 
 PLATFORM_CFLAGS += -DNO_SEGMENTED_MEMORY
@@ -485,7 +556,7 @@ endif
 GFX_CFLAGS += -DWIDESCREEN
 
 CC_CHECK := $(CC) -fsyntax-only -fsigned-char $(INCLUDE_CFLAGS) -Wall -Wextra -Wno-format-security -D_LANGUAGE_C $(VERSION_CFLAGS) $(MATCH_CFLAGS) $(PLATFORM_CFLAGS) $(GFX_CFLAGS) $(GRUCODE_CFLAGS)
-CFLAGS := $(OPT_FLAGS) $(INCLUDE_CFLAGS) -D_LANGUAGE_C $(VERSION_CFLAGS) $(MATCH_CFLAGS) $(PLATFORM_CFLAGS) $(GFX_CFLAGS) $(GRUCODE_CFLAGS) -fno-strict-aliasing -fwrapv -march=native
+CFLAGS := $(OPT_FLAGS) $(INCLUDE_CFLAGS) -D_LANGUAGE_C $(VERSION_CFLAGS) $(MATCH_CFLAGS) $(PLATFORM_CFLAGS) $(GFX_CFLAGS) $(GRUCODE_CFLAGS) -fno-strict-aliasing -fwrapv
 
 ASFLAGS := -I include -I $(BUILD_DIR) $(VERSION_ASFLAGS)
 
@@ -532,6 +603,49 @@ ifeq ($(COMPARE),1)
 endif
 else
 all: $(EXE)
+endif
+
+ifeq ($(TARGET_PS3),1)
+
+all: $(EXE_SELF)
+
+$(BUILD_DIR)/src/pc/gfx/gfx_ps3_rapi.o: $(SHADERDB_FILE)
+
+$(SHADERDB_FILE): $(FPO_O_FILES) $(VPO_O_FILES)
+	@$(PYTHON) tools/gen_shaderdb.py $(notdir $(FPO_FILES:.fpo=)) > $@
+
+%.self: %.elf
+	@echo CEX self ... $(notdir $@)
+	$(STRIP) $< -o $(BUILD_DIR)/$(notdir $<)
+	$(SPRX) $(BUILD_DIR)/$(notdir $<)
+	$(SELF) $(BUILD_DIR)/$(notdir $<) $@
+	$(FSELF) $(BUILD_DIR)/$(notdir $<) $(basename $@).fake.self
+
+%.pkg: %.self
+	@echo building pkg ... $(notdir $@)
+	@mkdir -p $(BUILD_DIR)/pkg/USRDIR
+	cp $(ICON0) $(BUILD_DIR)/pkg/ICON0.PNG
+	$(SELF_NPDRM) $(BUILD_DIR)/$(basename $(notdir $<)).elf $(BUILD_DIR)/pkg/USRDIR/EBOOT.BIN $(CONTENTID) >> /dev/null
+	$(SFO) --title "$(TITLE)" --appid "$(APPID)" -f $(SFOXML) $(BUILD_DIR)/pkg/PARAM.SFO
+	if [ -n "$(PKGFILES)" -a -d "$(PKGFILES)" ]; then cp -rf $(PKGFILES)/* $(BUILD_DIR)/pkg/; fi
+	$(PKG) --contentid $(CONTENTID) $(BUILD_DIR)/pkg/ $@ >> /dev/null
+	cp $@ $(basename $@).gnpdrm.pkg
+	$(PACKAGE_FINALIZE) $(basename $@).gnpdrm.pkg
+
+$(BUILD_DIR)/%.vpo.o: $(BUILD_DIR)/%.vpo
+	@$(shbin2o)
+
+$(BUILD_DIR)/%.fpo.o: $(BUILD_DIR)/%.fpo
+	@$(shbin2o)
+
+$(BUILD_DIR)/%.vpo: %.vcg
+	@mkdir -p $(dir $@)
+	$(CGCOMP) -v $(CGCFLAGS) $^ $@
+
+$(BUILD_DIR)/%.fpo: %.fcg
+	@mkdir -p $(dir $@)
+	$(CGCOMP) -f $(CGCFLAGS) $^ $@
+
 endif
 
 clean:
