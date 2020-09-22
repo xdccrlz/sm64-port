@@ -265,8 +265,6 @@ static struct ShaderProgram *gfx_ps3_create_and_load_new_shader(uint32_t shader_
 
     prg->num_fconsts = num_fconsts;
 
-    printf("shader %08x: vattrs in vpo: %d, vattrs counted: %d; fattrs in fpo: %d, fattrs counted: %d\n", shader_id, vpo->num_attr, num_vattrs, fpo->num_attr, num_fattrs);
-
     gfx_ps3_load_shader(prg);
 
     return prg;
@@ -319,6 +317,8 @@ static void gfx_ps3_select_texture(int tile, uint32_t texture_id) {
     if (last_tex->tex.offset) {
         rsxInvalidateTextureCache(rsx_ctx, GCM_INVALIDATE_TEXTURE);
         rsxLoadTexture(rsx_ctx, tile, &last_tex->tex);
+        rsxTextureWrapMode(rsx_ctx, tile, last_tex->wrap_s, last_tex->wrap_t, GCM_TEXTURE_CLAMP_TO_EDGE, 0, GCM_TEXTURE_ZFUNC_LESS, 0);
+        rsxTextureFilter(rsx_ctx, tile, 0, last_tex->min_filter, last_tex->mag_filter, GCM_TEXTURE_CONVOLUTION_QUINCUNX);
     }
 }
 
@@ -444,13 +444,8 @@ static inline void draw_set_environment(void) {
 
     // reload textures
 
-    for (int i = 0; i < 2; ++i) {
-        if (cur_tex[i]) {
-            gfx_ps3_select_texture(0, cur_tex[i] - tex_pool);
-            rsxTextureWrapMode(rsx_ctx, i, cur_tex[i]->wrap_s, cur_tex[i]->wrap_t, GCM_TEXTURE_CLAMP_TO_EDGE, 0, GCM_TEXTURE_ZFUNC_LESS, 0);
-            rsxTextureFilter(rsx_ctx, i, 0, cur_tex[i]->min_filter, cur_tex[i]->mag_filter, GCM_TEXTURE_CONVOLUTION_QUINCUNX);
-        }
-    }
+    if (cur_tex[0]) gfx_ps3_select_texture(0, cur_tex[0] - tex_pool);
+    if (cur_tex[1]) gfx_ps3_select_texture(1, cur_tex[1] - tex_pool);
 }  
 
 extern void rsx_wait_finish(void);
@@ -461,7 +456,7 @@ static void gfx_ps3_draw_triangles(float buf_vbo[], size_t buf_vbo_len, size_t b
 
     if (rsx_vtx_ptr[rsx_vtx_cur] + buf_vbo_len >= rsx_vtx_buf_end[rsx_vtx_cur]) {
         // flush the buffer and wait, then we can resume at the start of the buffer
-        printf("flush at %u floats\n", rsx_vtx_ptr[rsx_vtx_cur] - rsx_vtx_buf[rsx_vtx_cur]);
+        printf("rsx vtx flush at %u floats\n", rsx_vtx_ptr[rsx_vtx_cur] - rsx_vtx_buf[rsx_vtx_cur]);
         rsx_wait_finish();
         draw_set_environment();
         rsx_vtx_ptr[rsx_vtx_cur] = rsx_vtx_buf[rsx_vtx_cur];
