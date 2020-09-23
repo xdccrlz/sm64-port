@@ -3,14 +3,14 @@ void main(
 , float2 aTexCoord : TEXCOORD0
 , float4 aFog : COLOR1
 , float4 aInput1 : COLOR0
-, float4 out vPosition : POSITION
-, float4 out vFog : COLOR1
-, float2 out vTexCoord : TEXCOORD0
-, float4 out vInput1 : COLOR0
+, out float4 vPosition : POSITION
+, out float4 vFog : COLOR1
+, out float2 vTexCoord : TEXCOORD0
+, out float4 vInput1 : COLOR0
 ) {
 vTexCoord = aTexCoord;
 vFog = aFog;
 vInput1 = aInput1;
-vPosition = aPosition.xyzw;
+vPosition = aPosition;
 }
 
