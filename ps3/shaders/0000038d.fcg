@@ -1,6 +1,5 @@
 void main(
-  float3 vPosition : POSITION
-, float2 vTexCoord : TEXCOORD0
+  float2 vTexCoord : TEXCOORD0
 , float3 vInput1 : COLOR0
 , uniform sampler2D uTex0 : TEXUNIT0
 , out float4 outColor : COLOR
