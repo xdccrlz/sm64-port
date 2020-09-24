@@ -395,6 +395,7 @@ static void gfx_ps3_set_viewport(int x, int y, int width, int height) {
 }
 
 static void gfx_ps3_set_scissor(int x, int y, int width, int height) {
+    y = vid_mode.height - y - height;
     rsx_env.clip.x = x;
     rsx_env.clip.y = y;
     rsx_env.clip.w = width;
