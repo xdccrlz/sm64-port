@@ -4,7 +4,6 @@
 #include <ultra64.h>
 
 #include "controller_api.h"
-#include <SDL.h>
 
 #include <io/pad.h>
 
