@@ -522,7 +522,7 @@ ifeq ($(TARGET_WEB),1)
 endif
 ifeq ($(TARGET_PS3),1)
   PLATFORM_CFLAGS  := -mcpu=cell $(MACHDEP) -DTARGET_PS3 -I$(PSL1GHT)/ppu/include -I$(PSL1GHT)/ppu/include/simdmath
-  PLATFORM_LDFLAGS := $(MACHDEP) -L$(PSL1GHT)/ppu/lib -lsimdmath -lrsx -lgcm_sys -lio -lsysutil -lrt -llv2 -lm
+  PLATFORM_LDFLAGS := $(MACHDEP) -L$(PSL1GHT)/ppu/lib -lsimdmath -lrsx -lgcm_sys -lio -lsysutil -laudio -lrt -llv2 -lm
 endif
 
 PLATFORM_CFLAGS += -DNO_SEGMENTED_MEMORY
