@@ -209,7 +209,7 @@ static bool gfx_ps3_start_frame(void) {
     return true;
 }
 
-static void gfx_ps3_swap_buffers_begin(void) {
+static inline void rsx_flip(void) {
     if (first_fb) gcmResetFlipStatus();
     else rsx_wait_flip();
 
@@ -218,6 +218,12 @@ static void gfx_ps3_swap_buffers_begin(void) {
     gcmSetWaitFlip(rsx_ctx);
 
     first_fb = false;
+}
+
+static void gfx_ps3_swap_buffers_begin(void) {
+    rsx_flip();
+    rsx_flip(); // comment this out for 60 fps
+
     cur_fb ^= 1;
 
     rsxSetSurface(rsx_ctx, &gcm_surf[cur_fb]);
