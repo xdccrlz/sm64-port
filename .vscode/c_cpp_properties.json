@@ -1,0 +1,21 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "/usr/local/ps3dev/ppu/include",
+                "/usr/local/ps3dev/portlibs/ppu/include"
+            ],
+            "defines": [],
+            "compilerPath": "/usr/local/ps3dev/ppu/bin/ppu-gcc",
+            "cStandard": "c11",
+            "cppStandard": "c++14",
+            "intelliSenseMode": "gcc-x64",
+            "compilerArgs": [
+                " -mcpu=cell -mhard-float -fmodulo-sched -ffunction-sections -fdata-sections -DTARGET_PS3 -I$(PSL1GHT)/ppu/include -I$(PSL1GHT)/ppu/include/simdmath"
+            ]
+        }
+    ],
+    "version": 4
+}
