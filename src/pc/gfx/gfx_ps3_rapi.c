@@ -290,6 +290,12 @@ static uint32_t gfx_ps3_new_texture(void) {
 
     last_tex = tex_pool + idx;
 
+    if (last_tex->data) {
+        // re-using this slot, nuke whatever was there
+        rsxFree(last_tex->data);
+        last_tex->data = NULL;
+    }
+
     last_tex->tex.format    = (GCM_TEXTURE_FORMAT_A8R8G8B8 | GCM_TEXTURE_FORMAT_LIN);
     last_tex->tex.mipmap    = 1;
     last_tex->tex.dimension = GCM_TEXTURE_DIMS_2D;
@@ -545,7 +551,12 @@ static void gfx_ps3_finish_render(void) {
 }
 
 static void gfx_ps3_flush_textures(void) {
-
+    // new_texture will sort everything else out
+    tex_pool_size = 0;
+    cur_tex[0] = NULL;
+    cur_tex[1] = NULL;
+    last_tex = NULL;
+    rsxInvalidateTextureCache(rsx_ctx, GCM_INVALIDATE_TEXTURE);
 }
 
 static void gfx_ps3_rapi_shutdown(void) {

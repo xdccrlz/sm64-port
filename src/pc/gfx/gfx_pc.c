@@ -261,6 +261,7 @@ static bool gfx_texture_cache_lookup(int tile, struct TextureHashmapNode **n, co
         // Pool is full. We just invalidate everything and start over.
         gfx_texture_cache.pool_pos = 0;
         node = &gfx_texture_cache.hashmap[hash];
+        if (gfx_rapi->flush_textures) gfx_rapi->flush_textures();
         //puts("Clearing texture cache");
     }
     *node = &gfx_texture_cache.pool[gfx_texture_cache.pool_pos++];
