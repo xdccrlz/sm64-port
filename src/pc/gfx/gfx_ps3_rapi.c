@@ -544,6 +544,18 @@ static void gfx_ps3_finish_render(void) {
 
 }
 
+static void gfx_ps3_flush_textures(void) {
+
+}
+
+static void gfx_ps3_rapi_shutdown(void) {
+    gcmSetWaitFlip(rsx_ctx);
+    rsxFinish(rsx_ctx, 1);
+    rsxFree(rsx_vtx_buf[0]);
+    rsxFree(rsx_vtx_buf[1]);
+    rsxFree(rsx_idx_buf);
+}
+
 struct GfxRenderingAPI gfx_ps3_rapi = {
     gfx_ps3_z_is_from_0_to_1,
     gfx_ps3_unload_shader,
@@ -566,7 +578,9 @@ struct GfxRenderingAPI gfx_ps3_rapi = {
     gfx_ps3_on_resize,
     gfx_ps3_start_frame,
     gfx_ps3_end_frame,
-    gfx_ps3_finish_render
+    gfx_ps3_finish_render,
+    gfx_ps3_flush_textures,
+    gfx_ps3_rapi_shutdown,
 };
 
 #endif // TARGET_PS3

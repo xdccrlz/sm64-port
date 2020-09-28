@@ -27,6 +27,7 @@
 #include "audio/audio_ps3.h"
 #include "audio/audio_null.h"
 
+#include "controller/controller_api.h"
 #include "controller/controller_keyboard.h"
 
 #include "configfile.h"
@@ -141,13 +142,26 @@ static void on_fullscreen_changed(bool is_now_fullscreen) {
     configFullscreen = is_now_fullscreen;
 }
 
+void game_shutdown(void) {
+    save_config();
+
+    controller_shutdown();
+
+    if (audio_api) {
+        if (audio_api->shutdown) audio_api->shutdown();
+        audio_api = NULL;
+    }
+
+    gfx_shutdown();
+}
+
 void main_func(void) {
     static u64 pool[0x165000/8 / 4 * sizeof(void *)];
     main_pool_init(pool, pool + sizeof(pool) / sizeof(pool[0]));
     gEffectsMemoryPool = mem_pool_init(0x4000, MEMORY_POOL_LEFT);
 
     configfile_load(CONFIG_FILE);
-    atexit(save_config);
+    atexit(game_shutdown);
 
 #ifdef TARGET_WEB
     emscripten_set_main_loop(em_main_loop, 0, 0);

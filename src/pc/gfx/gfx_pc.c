@@ -1609,6 +1609,18 @@ void gfx_init(struct GfxWindowManagerAPI *wapi, struct GfxRenderingAPI *rapi, co
     }
 }
 
+void gfx_shutdown(void) {
+    if (gfx_rapi) {
+        if (gfx_rapi->shutdown) gfx_rapi->shutdown();
+        gfx_rapi = NULL;
+    }
+
+    if (gfx_wapi) {
+        if (gfx_wapi->shutdown) gfx_wapi->shutdown();
+        gfx_wapi = NULL;
+    }
+}
+
 struct GfxRenderingAPI *gfx_get_current_rendering_api(void) {
     return gfx_rapi;
 }

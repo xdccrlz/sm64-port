@@ -57,3 +57,10 @@ void osContGetReadData(OSContPad *pad) {
         controller_implementations[i]->read(pad);
     }
 }
+
+void controller_shutdown(void) {
+    for (size_t i = 0; i < sizeof(controller_implementations) / sizeof(struct ControllerAPI *); i++) {
+        if (controller_implementations[i]->shutdown)
+            controller_implementations[i]->shutdown();
+    }
+}

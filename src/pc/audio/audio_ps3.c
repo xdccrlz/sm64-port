@@ -72,6 +72,8 @@ static sys_event_queue_t aqueue;
 static sys_ppu_thread_t athread;
 static sys_mutex_t amutex;
 
+static volatile bool audio_running = false;
+
 static void sndqueue_init(const size_t bufsize) {
     const size_t wantpackets = (bufsize + (SNDPACKETLEN - 1)) / SNDPACKETLEN;
     for (size_t i = 0; i < wantpackets; ++i) {
@@ -180,7 +182,7 @@ static void drain_block(f32 *buf) {
 static void audio_thread(UNUSED void *arg) {
     sys_event_t event;
 
-    while (1) {
+    while (audio_running) {
         sysEventQueueReceive(aqueue, &event, 30000);
         const u64 current_block = *(u64*)((u64)aconfig.readIndex);
         f32 *data_start = (f32*)((u64)aconfig.audioDataStart);
@@ -211,6 +213,8 @@ static bool audio_ps3_init(void) {
     sysMutexAttrInitialize(mattr);
     sysMutexCreate(&amutex, &mattr);
 
+    audio_running = true;
+
     sysThreadCreate(&athread, audio_thread, NULL, 1500, 0x10000, THREAD_JOINABLE, "sm64 audio");
 
     return true;
@@ -234,11 +238,25 @@ static void audio_ps3_play(const uint8_t *buf, size_t len) {
     sysMutexUnlock(amutex);
 }
 
+static void audio_ps3_shutdown(void) {
+    u64 retval;
+    audio_running = false;
+    sysThreadJoin(athread, &retval);
+    sysMutexDestroy(amutex);
+
+    audioPortStop(aport);
+    audioRemoveNotifyEventQueue(akey);
+    audioPortClose(aport);
+    sysEventQueueDestroy(aqueue, 0);
+    audioQuit();
+}
+
 struct AudioAPI audio_ps3 = {
     audio_ps3_init,
     audio_ps3_buffered,
     audio_ps3_get_desired_buffered,
-    audio_ps3_play
+    audio_ps3_play,
+    audio_ps3_shutdown,
 };
 
 #endif // TARGET_PS3

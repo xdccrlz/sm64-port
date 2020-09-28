@@ -6,6 +6,9 @@
 struct ControllerAPI {
     void (*init)(void);
     void (*read)(OSContPad *pad);
+    void (*shutdown)(void);
 };
+
+void controller_shutdown(void);
 
 #endif

@@ -9,6 +9,7 @@
 #include <ppu-types.h>
 #include <rsx/rsx.h>
 #include <sysutil/video.h>
+#include <sysutil/sysutil.h>
 #include <sys/process.h>
 
 #include "../compat.h"
@@ -48,6 +49,14 @@ static const u32 vid_num_modes = sizeof(vid_mode_ids) / sizeof(vid_mode_ids[0]);
 
 static u32 cur_fb = 0;
 static bool first_fb = true;
+
+static void sysutil_exit_callback(u64 status, u64 param, void *usrdata) {
+    static bool exited = false;
+    if (status == SYSUTIL_EXIT_GAME && !exited) {
+        exited = true;
+        exit(0);
+    }
+}
 
 void rsx_wait_finish(void) {
     rsxSetWriteBackendLabel(rsx_ctx, GCM_LABEL_INDEX, write_label);
@@ -177,6 +186,8 @@ static void gfx_ps3_init(const char *game_name, bool start_in_fullscreen) {
     for (u32 i = 0; i < FRAME_BUFFER_COUNT; ++i)
         rsx_prepare_rendertarget(&gcm_surf[i], color_ofs[i], color_pitch, z_ofs, z_pitch, vid_mode.width, vid_mode.height);
 
+    sysUtilRegisterCallback(0, sysutil_exit_callback, NULL);
+
     printf("gfx_ps3_init: init complete\n");
 }
 
@@ -237,6 +248,10 @@ static double gfx_ps3_get_time(void) {
     return 0.0;
 }
 
+static void gfx_ps3_wapi_shutdown(void) {
+
+}
+
 struct GfxWindowManagerAPI gfx_ps3_wapi = {
     gfx_ps3_init,
     gfx_ps3_set_keyboard_callbacks,
@@ -248,7 +263,8 @@ struct GfxWindowManagerAPI gfx_ps3_wapi = {
     gfx_ps3_start_frame,
     gfx_ps3_swap_buffers_begin,
     gfx_ps3_swap_buffers_end,
-    gfx_ps3_get_time
+    gfx_ps3_get_time,
+    gfx_ps3_wapi_shutdown,
 };
 
 #endif
