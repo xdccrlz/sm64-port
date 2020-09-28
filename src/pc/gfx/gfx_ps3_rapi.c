@@ -478,7 +478,6 @@ static void gfx_ps3_draw_triangles(float buf_vbo[], size_t buf_vbo_len, size_t b
         rsx_vtx_ptr[rsx_vtx_cur] = rsx_vtx_buf[rsx_vtx_cur];
     }
 
-    gfx_ps3_set_viewport(0, 0, 1280, 720);
     memcpy(rsx_vtx_ptr[rsx_vtx_cur], buf_vbo, buf_vbo_len * sizeof(float));
     gfx_ps3_bind_attribs(rsx_vtx_ptr[rsx_vtx_cur], vert_len * sizeof(float), cur_prg);
     rsxDrawIndexArray(rsx_ctx, GCM_TYPE_TRIANGLES, rsx_idx_ofs, num_verts, GCM_INDEX_TYPE_16B, GCM_LOCATION_RSX);
