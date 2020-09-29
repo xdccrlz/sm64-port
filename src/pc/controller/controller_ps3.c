@@ -44,8 +44,8 @@ static void controller_ps3_read(OSContPad *pad) {
             const uint8_t rstick_v = ((uint8_t)paddata.ANA_R_V);
             if (rstick_h < 0x40) pad->button |= L_CBUTTONS;
             if (rstick_h > 0xC0) pad->button |= R_CBUTTONS;
-            if (rstick_v < 0x40) pad->button |= D_CBUTTONS;
-            if (rstick_v > 0xC0) pad->button |= U_CBUTTONS;
+            if (rstick_v < 0x40) pad->button |= U_CBUTTONS;
+            if (rstick_v > 0xC0) pad->button |= D_CBUTTONS;
 
             // Uncomment to use D-pads instead
             /*
