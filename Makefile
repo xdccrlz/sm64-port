@@ -245,6 +245,22 @@ ifeq ($(COMPILER),gcc)
   MIPSISET := -mips3
 endif
 
+ifeq ($(TARGET_PS2),1)
+  # try to detect GCC version
+  EE_CC_VERSION := $(shell ee-gcc -dumpversion 2> /dev/null)
+  ifneq ($(EE_CC_VERSION),3.2.2)
+  ifneq ($(EE_CC_VERSION),3.2.3)
+    # maybe new SDK?
+    EE_CC_VERSION := $(shell mips64r5900el-ps2-elf-gcc -dumpversion 2> /dev/null)
+    ifeq ($(EE_CC_VERSION),)
+      $(error No valid GCC found in PATH)
+    else
+      USE_NEW_PS2SDK := 1
+    endif
+  endif
+  endif
+endif
+
 ifeq ($(TARGET_N64),1)
 
 ifeq ($(VERSION),eu)
@@ -499,7 +515,6 @@ ifeq ($(TARGET_PS2),1)
   PLATFORM_CFLAGS  := -DTARGET_PS2 -D_EE -G0 -I$(AUDSRV)/ee/rpc/audsrv/include -I$(PS2SDK)/ee/include -I$(PS2SDK)/common/include -I$(GSKIT)/include
   PLATFORM_LDFLAGS := -L$(GSKIT)/lib -lgskit -ldmakit $(AUDSRV_LIB) -L$(PS2SDK)/ee/lib -lpad -lmc -ldma -lcdvd -lpatches -lm -lc -lkernel
   ifneq ($(USE_NEW_PS2SDK),1)
-    PLATFORM_CFLAGS  += -fno-rename-registers
     PLATFORM_ASFLAGS := --32 -march=generic32
   endif
 endif
