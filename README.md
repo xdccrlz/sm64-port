@@ -10,6 +10,17 @@ A prior copy of the game is required to extract the assets.
 
 ## Building native executables
 
+### Xbox
+
+The Xbox port is still early in development. Only tested on XQEMU/XEMU, not tested on real hardware.
+The port uses NXDK and XGU, which are present in the repo as submodules, so you don't need to install them separately.
+
+1. [Install prerequisites](https://github.com/XboxDev/nxdk/wiki/Install-the-Prerequisites) for NXDK.
+2. `git clone --recursive https://github.com/fgsfdsfgs/sm64-port.git -b xbox sm64-xbox`
+3. Copy your SM64 ROM into the `sm64-xbox` directory, rename it to `baserom.us.z64` (`baserom.eu.z64` or `baserom.jp.z64` for other regions).
+4. `cd sm64-xbox && make -j4`
+5. This will produce an Xbox executabler at `build/<VERSION>_pc/out/default.pbe` and an Xbox ISO called `sm64.iso` in the root repo directory.
+
 ### Linux
 
 1. Install prerequisites (Ubuntu): `sudo apt install -y git build-essential pkg-config libusb-1.0-0-dev libsdl2-dev`.
