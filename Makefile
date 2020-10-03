@@ -21,6 +21,8 @@ NON_MATCHING ?= 0
 TARGET_N64 ?= 0
 # Build for Emscripten/WebGL
 TARGET_WEB ?= 0
+# Build for Xbox
+TARGET_XBOX ?= 1
 # Compiler to use (ido or gcc)
 COMPILER ?= ido
 
@@ -30,7 +32,7 @@ ifeq ($(TARGET_N64),0)
   NON_MATCHING := 1
   GRUCODE := f3dex2e
   TARGET_WINDOWS := 0
-  ifeq ($(TARGET_WEB),0)
+  ifeq ($(TARGET_WEB)$(TARGET_XBOX),00)
     ifeq ($(OS),Windows_NT)
       TARGET_WINDOWS := 1
     else
@@ -46,7 +48,7 @@ ifeq ($(TARGET_N64),0)
         ENABLE_DX11 ?= 1
       endif
     endif
-  else
+  else ifneq ($(TARGET_XBOX),1)
     # On others, default to OpenGL
     ENABLE_OPENGL ?= 1
   endif
@@ -110,7 +112,11 @@ endif
 
 TARGET := sm64.$(VERSION)
 VERSION_CFLAGS := -D$(VERSION_DEF)
-VERSION_ASFLAGS := --defsym $(VERSION_DEF)=1
+ifeq ($(TARGET_XBOX),1)
+  VERSION_ASFLAGS := -D$(VERSION_DEF)
+else
+  VERSION_ASFLAGS := --defsym $(VERSION_DEF)=1
+endif
 
 # Microcode
 
@@ -165,6 +171,8 @@ endif
 
 ifneq ($(MAKECMDGOALS),clean)
 ifneq ($(MAKECMDGOALS),distclean)
+ifneq ($(MAKECMDGOALS),nxdkclean)
+ifneq ($(MAKECMDGOALS),shaderclean)
 
 # Make sure assets exist
 NOEXTRACT ?= 0
@@ -181,6 +189,8 @@ ifeq ($(DUMMY),FAIL)
   $(error Failed to build tools)
 endif
 
+endif
+endif
 endif
 endif
 
@@ -201,12 +211,12 @@ endif
 LIBULTRA := $(BUILD_DIR)/libultra.a
 ifeq ($(TARGET_WEB),1)
 EXE := $(BUILD_DIR)/$(TARGET).html
-else
-ifeq ($(TARGET_WINDOWS),1)
+else ifeq ($(TARGET_XBOX),1)
+EXE := $(BUILD_DIR)/$(TARGET).exe
+else ifeq ($(TARGET_WINDOWS),1)
 EXE := $(BUILD_DIR)/$(TARGET).exe
 else
 EXE := $(BUILD_DIR)/$(TARGET)
-endif
 endif
 ROM := $(BUILD_DIR)/$(TARGET).z64
 ELF := $(BUILD_DIR)/$(TARGET).elf
@@ -423,6 +433,41 @@ export LANG := C
 
 else # TARGET_N64
 
+ifeq ($(TARGET_XBOX),1)
+
+NXDK_DIR       = $(CURDIR)/xbox/nxdk
+XBE_TITLE      = sm64
+NXDK_STACKSIZE = 1048576
+OUTPUT_DIR     = $(CURDIR)/$(BUILD_DIR)/out
+GEN_XISO       = sm64.iso
+
+include xbox/xbox_base
+
+CPP := clang-cpp -P
+OBJDUMP := llvm-objdump
+OBJCOPY := llvm-objcopy
+
+NXDK_LIBS := \
+  $(NXDK_DIR)/lib/pbkit/pbkit.obj \
+  $(NXDK_DIR)/lib/libpdclib.lib \
+  $(NXDK_DIR)/lib/libwinapi.lib \
+	$(NXDK_DIR)/lib/libnxdk_usb.lib \
+  $(NXDK_DIR)/lib/libnxdk_hal.lib \
+  $(NXDK_DIR)/lib/libxboxrt.lib \
+  $(NXDK_DIR)/lib/xboxkrnl/libxboxkrnl.lib
+
+SHADERDIR := xbox/shaders
+VSHADERS := $(wildcard $(SHADERDIR)/*.vs.cg)
+PSHADERS := $(wildcard $(SHADERDIR)/*.ps.cg)
+VSH_OBJ  := $(foreach file,$(VSHADERS),$(BUILD_DIR)/$(file:.vs.cg=.vs.o))
+PSH_OBJ  := $(foreach file,$(PSHADERS),$(BUILD_DIR)/$(file:.ps.cg=.ps.o))
+
+SHADERDB_FILE := $(BUILD_DIR)/xbox_shader_db.h
+
+O_FILES += $(VSH_OBJ) $(PSH_OBJ)
+
+else # TARGET_XBOX
+
 AS := as
 ifneq ($(TARGET_WEB),1)
   CC := gcc
@@ -438,6 +483,9 @@ endif
 CPP := cpp -P
 OBJDUMP := objdump
 OBJCOPY := objcopy
+
+endif # TARGET_XBOX
+
 PYTHON := python3
 
 # Platform-specific compiler and linker flags
@@ -453,8 +501,21 @@ ifeq ($(TARGET_WEB),1)
   PLATFORM_CFLAGS  := -DTARGET_WEB
   PLATFORM_LDFLAGS := -lm -no-pie -s TOTAL_MEMORY=20MB -g4 --source-map-base http://localhost:8080/ -s "EXTRA_EXPORTED_RUNTIME_METHODS=['callMain']"
 endif
+ifeq ($(TARGET_XBOX),1)
+  PLATFORM_CFLAGS  := $(NXDK_CFLAGS) -Ixbox -DTARGET_XBOX -D_USE_MATH_DEFINES
+  PLATFORM_LDFLAGS := $(NXDK_LDFLAGS)
+  PLATFORM_ASFLAGS := $(NXDK_ASFLAGS) -c
+  ifeq ($(DEBUG),y)
+    PLATFORM_CFLAGS += -O0 -g -gdwarf-4
+    PLATFORM_ASFLAGS += -g -gdwarf-4
+    PLATFORM_LDFLAGS += -debug
+  endif
+endif
 
-PLATFORM_CFLAGS += -DNO_SEGMENTED_MEMORY -DUSE_SYSTEM_MALLOC
+PLATFORM_CFLAGS += -DNO_SEGMENTED_MEMORY
+ifneq ($(TARGET_XBOX),1)
+  PLATFORM_CFLAGS += -DUSE_SYSTEM_MALLOC
+endif
 
 # Compiler and linker flags for graphics backend
 ifeq ($(ENABLE_OPENGL),1)
@@ -485,9 +546,9 @@ endif
 GFX_CFLAGS += -DWIDESCREEN
 
 CC_CHECK := $(CC) -fsyntax-only -fsigned-char $(INCLUDE_CFLAGS) -Wall -Wextra -Wno-format-security -D_LANGUAGE_C $(VERSION_CFLAGS) $(MATCH_CFLAGS) $(PLATFORM_CFLAGS) $(GFX_CFLAGS) $(GRUCODE_CFLAGS)
-CFLAGS := $(OPT_FLAGS) $(INCLUDE_CFLAGS) -D_LANGUAGE_C $(VERSION_CFLAGS) $(MATCH_CFLAGS) $(PLATFORM_CFLAGS) $(GFX_CFLAGS) $(GRUCODE_CFLAGS) -fno-strict-aliasing -fwrapv -march=native
+CFLAGS := $(OPT_FLAGS) $(INCLUDE_CFLAGS) -D_LANGUAGE_C $(VERSION_CFLAGS) $(MATCH_CFLAGS) $(PLATFORM_CFLAGS) $(GFX_CFLAGS) $(GRUCODE_CFLAGS) -fno-strict-aliasing -fwrapv
 
-ASFLAGS := -I include -I $(BUILD_DIR) $(VERSION_ASFLAGS)
+ASFLAGS := -I include -I $(BUILD_DIR) $(VERSION_ASFLAGS) $(PLATFORM_ASFLAGS)
 
 LDFLAGS := $(PLATFORM_LDFLAGS) $(GFX_LDFLAGS)
 
@@ -531,11 +592,54 @@ ifeq ($(COMPARE),1)
 	@$(SHA1SUM) -c $(TARGET).sha1 || (echo 'The build succeeded, but did not match the official ROM. This is expected if you are making changes to the game.\nTo silence this message, use "make COMPARE=0"'. && false)
 endif
 else
+
 all: $(EXE)
+
+ifeq ($(TARGET_XBOX),1)
+
+all: $(GEN_XISO)
+
+nxdkclean:
+	$(MAKE) -C $(NXDK_DIR) clean
+
+shaderclean:
+	$(RM) -r $(EXE) $(GEN_XISO) $(SHADERDB_FILE) $(OUTPUT_DIR) $(BUILD_DIR)/xbox/shaders
+
+$(BUILD_DIR)/src/pc/gfx/gfx_xbox_rapi.o: $(SHADERDB_FILE)
+
+$(SHADERDB_FILE): $(VSH_OBJ) $(PSH_OBJ)
+	$(PYTHON) tools/gen_shaderdb.py $(notdir $(VSH_OBJ:.vs.o=)) > $@
+
+$(BUILD_DIR)/%.vs.o: CFLAGS += -Wno-missing-braces
+$(BUILD_DIR)/%.vs.o: $(BUILD_DIR)/%.vs.c
+$(BUILD_DIR)/%.ps.o: $(BUILD_DIR)/%.ps.c
+
+$(BUILD_DIR)/%.vs.c: %.vs.cg $(VP20COMPILER)
+	@mkdir -p $(dir $@)
+	$(CGC) -profile vp20 -o $@.vpo $<
+	@echo "const struct { unsigned int i[4]; } _$(notdir $(@:.vs.c=_vs_inst))[] = {" > $@
+	$(VP20COMPILER) $@.vpo >> $@
+	@echo "};" >> $@
+	@echo "const unsigned int _$(notdir $(@:.vs.c=_vs_size)) = sizeof(_$(notdir $(@:.vs.c=_vs_inst)));" >> $@
+
+$(BUILD_DIR)/%.ps.c: %.ps.cg $(FP20COMPILER)
+	@mkdir -p $(dir $@)
+	$(CGC) -profile fp20 -o $@.fpo $<
+	@echo "#include <pbkit/pbkit.h>" > $@
+	@echo "uint32_t *_$(notdir $(@:.ps.c=_ps_combiner))(uint32_t *p) {" >> $@
+	$(FP20COMPILER) $@.fpo >> $@
+	@echo "return p;" >> $@
+	@echo "}" >> $@
+	@echo >> $@
+
+include xbox/xbox_rules
+
+endif
+
 endif
 
 clean:
-	$(RM) -r $(BUILD_DIR_BASE)
+	$(RM) -r $(BUILD_DIR_BASE) $(GEN_XISO)
 
 distclean:
 	$(RM) -r $(BUILD_DIR_BASE)
@@ -797,7 +901,7 @@ $(BUILD_DIR)/%.o: $(BUILD_DIR)/%.c
 	$(CC) -c $(CFLAGS) -o $@ $<
 
 $(BUILD_DIR)/%.o: %.s
-	$(AS) $(ASFLAGS) -MD $(BUILD_DIR)/$*.d -o $@ $<
+	$(AS) $(ASFLAGS) -o $@ $<
 
 ifeq ($(TARGET_N64),1)
 $(BUILD_DIR)/$(LD_SCRIPT): $(LD_SCRIPT)
@@ -820,14 +924,21 @@ $(ROM): $(ELF)
 $(BUILD_DIR)/$(TARGET).objdump: $(ELF)
 	$(OBJDUMP) -D $< > $@
 
+else ifeq ($(TARGET_XBOX),1)
+
+$(EXE): $(O_FILES) $(MIO0_FILES:.mio0=.o) $(SOUND_OBJ_FILES) $(ULTRA_O_FILES) $(GODDARD_O_FILES) $(NXDK_LIBS)
+	$(LD) $(LDFLAGS) -out:'$@' $^
+
 else
+
 $(EXE): $(O_FILES) $(MIO0_FILES:.mio0=.o) $(SOUND_OBJ_FILES) $(ULTRA_O_FILES) $(GODDARD_O_FILES)
 	$(LD) -L $(BUILD_DIR) -o $@ $(O_FILES) $(SOUND_OBJ_FILES) $(ULTRA_O_FILES) $(GODDARD_O_FILES) $(LDFLAGS)
+
 endif
 
 
 
-.PHONY: all clean distclean default diff test load libultra
+.PHONY: all clean distclean nxdkclean shaderclean default diff test load libultra
 # with no prerequisites, .SECONDARY causes no intermediate target to be removed
 .SECONDARY:
 

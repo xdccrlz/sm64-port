@@ -1,0 +1,13 @@
+void main(
+  float4 vFog : COLOR1
+, float2 vTexCoord : TEXCOORD0
+, float4 vInput1 : COLOR0
+, uniform sampler2D uTex0 : TEXUNIT0
+, out float4 outColor : COLOR
+) {
+float4 texVal0 = tex2D(uTex0, vTexCoord);
+float4 texel = float4(texVal0.rgb, vInput1.a);
+texel = float4(mix(texel.rgb, vFog.rgb, vFog.a), texel.a);
+outColor = texel;
+}
+

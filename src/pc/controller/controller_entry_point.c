@@ -6,7 +6,9 @@
 #include "controller_recorded_tas.h"
 #include "controller_keyboard.h"
 
-#if defined(_WIN32) || defined(_WIN64)
+#if defined(TARGET_XBOX)
+#include "controller_xbox.h"
+#elif defined(_WIN32) || defined(_WIN64)
 #include "controller_xinput.h"
 #else
 #include "controller_sdl.h"
@@ -18,7 +20,9 @@
 
 static struct ControllerAPI *controller_implementations[] = {
     &controller_recorded_tas,
-#if defined(_WIN32) || defined(_WIN64)
+#if defined(TARGET_XBOX)
+    &controller_xbox,
+#elif defined(_WIN32) || defined(_WIN64)
     &controller_xinput,
 #else
     &controller_sdl,

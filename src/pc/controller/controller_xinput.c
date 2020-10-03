@@ -1,4 +1,4 @@
-#if defined(_WIN32) || defined(_WIN64)
+#if (defined(_WIN32) || defined(_WIN64)) && !defined(TARGET_XBOX)
 
 #include <windows.h>
 #include <xinput.h>

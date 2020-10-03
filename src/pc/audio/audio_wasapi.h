@@ -1,7 +1,7 @@
 #ifndef AUDIO_WASAPI_H
 #define AUDIO_WASAPI_H
 
-#if defined(_WIN32) || defined(_WIN64)
+#if (defined(_WIN32) || defined(_WIN64)) && !defined(TARGET_XBOX)
 #include "audio_api.h"
 extern struct AudioAPI audio_wasapi;
 #define HAVE_WASAPI 1

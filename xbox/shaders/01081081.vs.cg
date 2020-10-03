@@ -1,0 +1,16 @@
+void main(
+  float4 aPosition : POSITION
+, float4 aInput1 : COLOR0
+, float4 aInput2 : COLOR1
+, out float4 vPosition : POSITION
+, out float4 vInput1 : COLOR0
+, out float4 vInput2 : COLOR1
+, uniform float4x4 uViewport
+) {
+vInput1 = aInput1;
+vInput2 = aInput2;
+float4 pos = mul(aPosition, uViewport);
+pos.xyz /= pos.w;
+vPosition = float4(pos.xyz, aPosition.w);
+}
+

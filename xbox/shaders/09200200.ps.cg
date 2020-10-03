@@ -1,0 +1,8 @@
+void main(
+  float4 vInput1 : COLOR0
+, out float4 outColor : COLOR
+) {
+float4 texel = vInput1;
+outColor = texel;
+}
+

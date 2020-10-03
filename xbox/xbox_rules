@@ -1,0 +1,79 @@
+include $(NXDK_DIR)/lib/Makefile
+
+V = 0
+VE_0 := @
+VE_1 :=
+VE = $(VE_$(V))
+
+ifeq ($(V),1)
+QUIET=
+else
+QUIET=>/dev/null
+endif
+
+$(OUTPUT_DIR)/default.xbe: $(EXE) $(OUTPUT_DIR) $(CXBE)
+	@echo "[ CXBE     ] $@"
+	$(VE)$(CXBE) -OUT:$@ -TITLE:$(XBE_TITLE) $< $(QUIET)
+
+$(OUTPUT_DIR):
+	@mkdir -p $(OUTPUT_DIR);
+
+ifneq ($(GEN_XISO),)
+$(GEN_XISO): $(OUTPUT_DIR)/default.xbe $(EXTRACT_XISO)
+	@echo "[ XISO     ] $@"
+	$(VE) $(EXTRACT_XISO) -c $(OUTPUT_DIR) $(XISO_FLAGS) $@ $(QUIET)
+endif
+
+%.lib:
+	@echo "[ LIB      ] $@"
+	$(VE) $(LIB) -out:'$@' $^
+
+%.obj: %.cpp
+	@echo "[ CXX      ] $@"
+	$(VE) $(CXX) $(NXDK_CXXFLAGS) $(CXXFLAGS) -MD -MP -MT '$@' -MF '$(patsubst %.cpp,%.cpp.d,$<)' -c -o '$@' '$<'
+
+%.obj: %.c
+	@echo "[ CC       ] $@"
+	$(VE) $(CC) $(NXDK_CFLAGS) $(CFLAGS) -MD -MP -MT '$@' -MF '$(patsubst %.c,%.c.d,$<)' -c -o '$@' '$<'
+
+%.obj: %.s
+	@echo "[ AS       ] $@"
+	$(VE) $(AS) $(NXDK_ASFLAGS) $(ASFLAGS) -c -o '$@' '$<'
+
+%.inl: %.vs.cg $(VP20COMPILER)
+	@echo "[ CG       ] $@"
+	$(VE) $(CGC) -profile vp20 -o $@.$$$$ $< $(QUIET) && \
+	$(VP20COMPILER) $@.$$$$ > $@ && \
+	rm -rf $@.$$$$
+
+%.inl: %.ps.cg $(FP20COMPILER)
+	@echo "[ CG       ] $@"
+	$(VE) $(CGC) -profile fp20 -o $@.$$$$ $< $(QUIET) && \
+	$(FP20COMPILER) $@.$$$$ > $@ && \
+	rm -rf $@.$$$$
+
+nxdktools: $(NXDK_TOOLS)
+.PHONY: nxdktools $(NXDK_TOOLS)
+
+cxbe: $(CXBE)
+$(CXBE):
+	@echo "[ BUILD    ] $@"
+	$(VE)$(MAKE) -C $(NXDK_DIR)/tools/cxbe $(QUIET)
+
+vp20compiler: $(VP20COMPILER)
+$(VP20COMPILER):
+	@echo "[ BUILD    ] $@"
+	$(VE)$(MAKE) -C $(NXDK_DIR)/tools/vp20compiler $(QUIET)
+
+fp20compiler: $(FP20COMPILER)
+$(FP20COMPILER):
+	@echo "[ BUILD    ] $@"
+	$(VE)$(MAKE) -C $(NXDK_DIR)/tools/fp20compiler $(QUIET)
+
+extract-xiso: $(EXTRACT_XISO)
+$(EXTRACT_XISO):
+	@echo "[ BUILD    ] $@"
+	$(VE)(mkdir $(NXDK_DIR)/tools/extract-xiso/build; \
+	cd $(NXDK_DIR)/tools/extract-xiso/build && \
+	cmake -G "Unix Makefiles" .. $(QUIET) && \
+	$(MAKE) $(QUIET))

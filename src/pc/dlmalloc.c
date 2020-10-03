@@ -1,3 +1,4 @@
+#ifdef USE_SYSTEM_MALLOC
 // Windows has terrible malloc/free performance, so use dlmalloc
 // instead. This makes malloc/free time per frame go from order of
 // milliseconds to tens of microseconds.
@@ -6287,3 +6288,5 @@ History:
 
 */
 #endif
+
+#endif // USE_SYSTEM_MALLOC

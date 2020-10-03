@@ -1,0 +1,13 @@
+void main(
+  float4 aPosition : POSITION
+, float2 aTexCoord : TEXCOORD
+, out float4 vPosition : POSITION
+, out float2 vTexCoord : TEXCOORD0
+, uniform float4x4 uViewport
+) {
+vTexCoord = aTexCoord;
+float4 pos = mul(aPosition, uViewport);
+pos.xyz /= pos.w;
+vPosition = float4(pos.xyz, aPosition.w);
+}
+
