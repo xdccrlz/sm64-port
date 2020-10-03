@@ -19,7 +19,7 @@ The port uses NXDK and XGU, which are present in the repo as submodules, so you 
 2. `git clone --recursive https://github.com/fgsfdsfgs/sm64-port.git -b xbox sm64-xbox`
 3. Copy your SM64 ROM into the `sm64-xbox` directory, rename it to `baserom.us.z64` (`baserom.eu.z64` or `baserom.jp.z64` for other regions).
 4. `cd sm64-xbox && make -j4`
-5. This will produce an Xbox executabler at `build/<VERSION>_pc/out/default.pbe` and an Xbox ISO called `sm64.iso` in the root repo directory.
+5. This will produce an Xbox executable at `build/<VERSION>_pc/out/default.pbe` and an Xbox ISO called `sm64.iso` in the root repo directory.
 
 ### Linux
 
