@@ -8,6 +8,50 @@
 This repo does not include all assets necessary for compiling the game.
 A prior copy of the game is required to extract the assets.
 
+## Building PS3 executables
+
+The PS3 port is still in development. Expect issues.
+
+### Using Docker
+
+0. Ensure Git and Docker are installed on your system.
+1. Check out repo, submodules, etc:
+```
+git clone https://github.com/fgsfdsfgs/sm64-port.git -b ps3 --recursive
+cd sm64-port
+```
+2. Copy in your baserom.XX.z64: `cp /path/to/baserom.us.z64 .`
+3. Build Docker image: `docker build . -t sm64_ps3`
+4. Compile using your Docker image: `docker run --rm -ti -v $(pwd):/sm64 sm64_ps3 make --jobs`
+
+Alternatively instead of steps 3 and 4 you can use a prebuilt Docker image provided by mkst:
+```docker run --rm -ti -v $(pwd):/sm64 markstreet/sm64:ps3 make --jobs```
+
+### Manually under Linux (WSL and MSYS2 not tested)
+
+0. Ensure Git, GCC, GNU Make and Python 3 are installed on your system:
+```
+# for example on Ubuntu
+sudo apt install git build-essential python3
+```
+1. Ensure PSL1GHT is installed on your system and the environmental variables `PS3DEV` and `PSL1GHT` are defined and PSL1GHT is in your `PATH`.
+You can follow the installation instructions in the [ps3toolchain repo](https://github.com/ps3dev/ps3toolchain).
+2. Install [Cg Toolkit](https://developer.nvidia.com/cg-toolkit-download).
+3. Check out repo, submodules, etc:
+```
+git clone https://github.com/fgsfdsfgs/sm64-port.git -b ps3 --recursive
+cd sm64-port
+```
+4. Copy in your baserom.XX.z64: `cp /path/to/baserom.us.z64 .`
+5. Compile: `make -j4`
+
+In both cases, the resulting SELF will be in `build/<region>_ps3/`.
+
+There is also an untested PKG target in the Makefile, which can be used like so (replace `us` with your region of choice if needed):
+```make build/us_ps3/sm64.us.f3dex2e.pkg```
+
+The resulting PKG file will be in the same directory as the SELF.
+
 ## Building native executables
 
 ### Linux
