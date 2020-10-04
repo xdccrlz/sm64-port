@@ -34,7 +34,7 @@
 #define MAX_SHADERS 64
 #define MAX_TEXTURES 512
 #define MAX_ATTRIBS 8
-#define MAX_VERTS (1024 * 3)
+#define MAX_VERTS (2048 * 3)
 
 #define TEXCACHE_SIZE (512 * 64 * 32 * 4)
 #define VTXBUF_FLOATS (MAX_VERTS * 32)
@@ -86,37 +86,50 @@ struct Texture {
     uint8_t *data;
 };
 
-struct Viewport {
-    float cx, cy;
-    float hw, hh;
+struct Rect {
+    float x, y;
+    float w, h;
 };
+
+static struct RenderState {
+    struct Rect view;
+    bool view_changed;
+    struct Rect clip;
+    bool clip_changed;
+
+    struct Texture *tex[2];
+    struct Texture *last_tex;
+    uint32_t last_tile;
+    bool tex_changed[2];
+
+    struct ShaderProgram *shader;
+    bool shader_changed;
+
+    bool blend, blend_changed;
+    bool ztest, ztest_changed;
+    bool zmask, zmask_changed;
+    bool decal, decal_changed;
+    bool atest, atest_changed;
+    bool flags_changed;
+
+    XguMatrix4x4 u_viewport;
+    bool uniforms_changed;
+} rst;
 
 static struct ShaderProgram shader_program_pool[MAX_SHADERS];
 static uint32_t num_shaders;
-static struct ShaderProgram *cur_shader = NULL;
 
 static struct Texture tex_pool[MAX_TEXTURES];
 static uint32_t num_textures;
-static struct Texture *cur_tex[2] = { NULL, NULL };
-static struct Texture *last_tex = NULL;
-static uint32_t last_tile = 0;
-static bool tex_changed = false;
 
 static uint8_t *tex_cache = NULL;
 static uint8_t *tex_cache_ptr = NULL;
 static uint8_t *tex_cache_end = NULL;
 
-static XguMatrix4x4 mat_viewport;
-static bool do_blend = false;
-static bool z_test = true;
-static bool z_write = true;
-static bool z_decal = false;
-
 static float *vtx_buf;
 static float *vtx_buf_ptr;
 static float *vtx_buf_end;
-
-static uint32_t *cmd;
+static int vtx_buf_cur;
 
 /* from stackoverflow.com/a/11398748 */
 
@@ -151,8 +164,14 @@ static inline void draw_finish(void) {
     while (pb_busy());
 }
 
-static inline void draw_set_texture(const uint32_t i, const struct Texture *tex) {
-    if (tex) {
+static inline void draw_push_wait(void) {
+    uint32_t *cmd = pb_begin();
+    cmd = xgu_wait_for_idle(cmd);
+    pb_end(cmd);
+}
+
+static inline uint32_t *draw_set_texture(uint32_t *cmd, const uint32_t i, const struct Texture *tex) {
+    if (tex && tex->data) {
         cmd = xgu_set_texture_offset(cmd, i, (const void *)tex->addr);
         cmd = xgu_set_texture_format(cmd, i, 2, false, XGU_SOURCE_COLOR, 2, tex->format, 1, tex->wshift, tex->hshift, 0);
         cmd = xgu_set_texture_address(cmd, i, tex->wrap_u, false, tex->wrap_v, false, XGU_CLAMP_TO_EDGE, false, false);
@@ -161,25 +180,32 @@ static inline void draw_set_texture(const uint32_t i, const struct Texture *tex)
     } else {
         cmd = xgu_set_texture_control0(cmd, i, false, 0, 0);
     }
+    return cmd;
 }
 
-static inline void draw_set_blending(const bool do_blend) {
+static inline uint32_t *draw_set_blending(uint32_t *cmd, const bool do_blend) {
     cmd = xgu_set_blend_enable(cmd, do_blend);
     cmd = xgu_set_blend_func_sfactor(cmd, XGU_FACTOR_SRC_ALPHA);
     cmd = xgu_set_blend_func_dfactor(cmd, XGU_FACTOR_ONE_MINUS_SRC_ALPHA);
+    return cmd;
 }
 
-static inline void draw_set_ztest(const bool z_test) {
+static inline uint32_t *draw_set_ztest(uint32_t *cmd, const bool z_test) {
     cmd = xgu_set_depth_test_enable(cmd, z_test);
     cmd = xgu_set_depth_func(cmd, XGU_FUNC_LESS_OR_EQUAL);
+    return cmd;
 }
 
-static inline void draw_set_zmask(const bool z_mask) {
-    cmd = xgu_set_depth_mask(cmd, z_mask);
+static inline uint32_t *draw_set_zmask(uint32_t *cmd, const bool z_mask) {
+    return xgu_set_depth_mask(cmd, z_mask);
+}
+
+static inline uint32_t *draw_set_atest(uint32_t *cmd, const bool a_test) {
+    return xgu_set_alpha_test_enable(cmd, a_test);
 }
 
 static inline void draw_set_vertex_shader(const XguTransformProgramInstruction *inst, const uint32_t size) {
-    cmd = pb_begin();
+    uint32_t *cmd = pb_begin();
 
     cmd = xgu_set_transform_program_start(cmd, 0);
     cmd = xgu_set_transform_execution_mode(cmd, XGU_PROGRAM, XGU_RANGE_MODE_PRIVATE);
@@ -195,11 +221,16 @@ static inline void draw_set_vertex_shader(const XguTransformProgramInstruction *
     pb_end(cmd);
 }
 
+static inline void draw_set_combiner(combiner_fn_t combiner) {
+    uint32_t *cmd = pb_begin();
+    cmd = combiner(cmd);
+    pb_end(cmd);
+}
+
 static inline void draw_set_uniforms(const struct ShaderProgram *prg) {
-    cmd = pb_begin();
-    cmd = pb_push1(cmd, NV20_TCL_PRIMITIVE_3D_VP_UPLOAD_CONST_ID, 96);
-    pb_push(cmd++, NV20_TCL_PRIMITIVE_3D_VP_UPLOAD_CONST_X, 16);
-    memcpy(cmd, &mat_viewport.f[0], 16*4); cmd += 16;
+    uint32_t *cmd = pb_begin();
+    cmd = xgu_set_transform_constant_load(cmd, 96);
+    cmd = xgu_set_transform_constant(cmd, (XguVec4*)&rst.u_viewport, 4);
     pb_end(cmd);
 }
 
@@ -215,35 +246,74 @@ static inline void draw_reset_vertex_attribs(void) {
         xgux_set_attrib_pointer(i, XGU_FLOAT, 0, 0, NULL);
 }
 
+static inline void draw_set_shader(struct ShaderProgram *prg) {
+    draw_set_vertex_shader(prg->prog->vp_inst, *prg->prog->vp_size);
+    draw_set_combiner(prg->prog->fp_combiner);
+}
+
+static void draw_update_state(void) {
+    uint32_t *cmd;
+
+    if (rst.shader_changed) {
+        draw_set_shader(rst.shader);
+        rst.shader_changed = false;
+    }
+
+    if (rst.flags_changed) {
+        cmd = pb_begin();
+        if (rst.blend_changed) {
+            cmd = draw_set_blending(cmd, rst.blend);
+            rst.blend_changed = false;
+        }
+        if (rst.atest_changed) {
+            cmd = draw_set_atest(cmd, rst.atest);
+            rst.atest_changed = false;
+        }
+        if (rst.ztest_changed) {
+            cmd = draw_set_ztest(cmd, rst.ztest);
+            rst.ztest_changed = false;
+        }
+        if (rst.zmask_changed) {
+            cmd = draw_set_zmask(cmd, rst.zmask);
+            rst.zmask_changed = false;
+        }
+        pb_end(cmd);
+        rst.flags_changed = false;
+    }
+
+    if (rst.tex_changed[0] || rst.tex_changed[1]) {
+        cmd = pb_begin();
+        for (uint32_t i = 0; i < 2; ++i) {
+            if (rst.tex_changed[i]) {
+                cmd = draw_set_texture(cmd, i, rst.shader->cc.used_textures[i] ? rst.tex[i] : NULL);
+                rst.tex_changed[i] = false;
+            }
+        }
+        pb_end(cmd);
+    }
+
+    if (rst.uniforms_changed) {
+        draw_set_uniforms(rst.shader);
+        rst.uniforms_changed = false;
+    }
+}
+
 static bool gfx_xbox_rapi_z_is_from_0_to_1(void) {
     return false;
 }
 
 static void gfx_xbox_rapi_unload_shader(struct ShaderProgram *old_prg) {
-    if (cur_shader && (cur_shader == old_prg || !old_prg))
-        cur_shader = NULL;
+    if (rst.shader && (rst.shader == old_prg || !old_prg))
+        rst.shader = NULL;
 }
 
 static void gfx_xbox_rapi_load_shader(struct ShaderProgram *new_prg) {
-    draw_finish();
-
-    cur_shader = new_prg;
-
-    draw_set_vertex_shader(cur_shader->prog->vp_inst, *cur_shader->prog->vp_size);
-    cmd = pb_begin();
-    cmd = cur_shader->prog->fp_combiner(cmd);
-    pb_end(cmd);
-
-    cmd = pb_begin();
-    cmd = xgu_set_alpha_test_enable(cmd, new_prg->cc.opt_texture_edge);
-    pb_end(cmd);
-
-    // force it to rebind textures on the next drawcall
-    tex_changed = true;
-
-    draw_set_uniforms(cur_shader);
-    draw_reset_vertex_attribs();
-    // draw_set_vertex_attribs will be called in draw_triangles
+    rst.shader = new_prg;
+    rst.atest = new_prg ? new_prg->cc.opt_texture_edge : false;
+    rst.flags_changed = rst.atest_changed = true;
+    rst.shader_changed = true;
+    rst.uniforms_changed = true;
+    rst.tex_changed[0] = rst.tex_changed[1] = true;
 }
 
 static struct ShaderProgram *gfx_xbox_rapi_create_and_load_new_shader(uint32_t shader_id) {
@@ -328,51 +398,45 @@ static void gfx_xbox_rapi_shader_get_info(struct ShaderProgram *prg, uint8_t *nu
 static uint32_t gfx_xbox_rapi_new_texture(void) {
     const uint32_t idx = num_textures++;
 
-    last_tex = tex_pool + idx;
-    last_tex->data = NULL;
-    last_tex->addr = 0;
-    last_tex->wrap_u = XGU_WRAP;
-    last_tex->wrap_v = XGU_WRAP;
-    last_tex->filter = NV_TEX_FILTER_LINEAR;
+    rst.last_tex = tex_pool + idx;
+    rst.last_tex->data = NULL;
+    rst.last_tex->addr = 0;
+    rst.last_tex->wrap_u = XGU_WRAP;
+    rst.last_tex->wrap_v = XGU_WRAP;
+    rst.last_tex->filter = NV_TEX_FILTER_LINEAR;
 
     return idx;
 }
 
 static void gfx_xbox_rapi_select_texture(int tile, uint32_t texture_id) {
-    last_tile = tile;
-    last_tex = cur_tex[tile] = tex_pool + texture_id;
-    if (last_tex->data) {
-        cmd = pb_begin();
-        draw_set_texture(last_tile, last_tex);
-        pb_end(cmd);
-    }
+    rst.last_tile = tile;
+    rst.last_tex = rst.tex[tile] = tex_pool + texture_id;
+    if (rst.last_tex->data) rst.tex_changed[tile] = true;
 }
 
 static void gfx_xbox_rapi_upload_texture(const uint8_t *rgba32_buf, int width, int height) {
-    last_tex->width = width;
-    last_tex->height = height;
-    last_tex->pitch = width * 4;
-    last_tex->wshift = log2_u32(last_tex->width);
-    last_tex->hshift = log2_u32(last_tex->height);
-    last_tex->format = XGU_TEXTURE_FORMAT_A8B8G8R8_SWIZZLED;
+    rst.last_tex->width = width;
+    rst.last_tex->height = height;
+    rst.last_tex->pitch = width * 4;
+    rst.last_tex->wshift = log2_u32(rst.last_tex->width);
+    rst.last_tex->hshift = log2_u32(rst.last_tex->height);
+    rst.last_tex->format = XGU_TEXTURE_FORMAT_A8B8G8R8_SWIZZLED;
 
-    const uint32_t in_size = height * last_tex->pitch;
+    const uint32_t in_size = height * rst.last_tex->pitch;
 
     if (tex_cache_ptr + in_size > tex_cache_end) {
         debugPrint("gfx_xbox_rapi_upload_texture(%p, %d, %d): out of cache space!\n", rgba32_buf, width, height);
         tex_cache_ptr = tex_cache; // whatever, just continue from start
     }
 
-    last_tex->data = tex_cache_ptr;
-    last_tex->addr = (uint32_t)tex_cache_ptr & 0x03ffffff;
+    rst.last_tex->data = tex_cache_ptr;
+    rst.last_tex->addr = (uint32_t)tex_cache_ptr & 0x03ffffff;
 
-    swizzle_rect(rgba32_buf, width, height, tex_cache_ptr, last_tex->pitch, 4);
-
-    cmd = pb_begin();
-    draw_set_texture(last_tile, last_tex);
-    pb_end(cmd);
+    swizzle_rect(rgba32_buf, width, height, tex_cache_ptr, rst.last_tex->pitch, 4);
 
     tex_cache_ptr += in_size;
+
+    rst.tex_changed[rst.last_tile] = true;
 }
 
 static inline uint32_t cm_to_nv(const uint32_t val) {
@@ -381,76 +445,69 @@ static inline uint32_t cm_to_nv(const uint32_t val) {
 }
 
 static void gfx_xbox_rapi_set_sampler_parameters(int tile, bool linear_filter, uint32_t cms, uint32_t cmt) {
-    cur_tex[tile]->wrap_u = cm_to_nv(cms);
-    cur_tex[tile]->wrap_v = cm_to_nv(cmt);
-    cur_tex[tile]->filter = linear_filter ? NV_TEX_FILTER_LINEAR : NV_TEX_FILTER_NONE;
-    if (cur_tex[tile]->data) {
-        cmd = pb_begin();
-        cmd = xgu_set_texture_address(cmd, tile, cur_tex[tile]->wrap_u, false, cur_tex[tile]->wrap_v, false, XGU_CLAMP_TO_EDGE, false, false);
-        cmd = xgu_set_texture_control0(cmd, tile, true, 0, 0);
-        cmd = xgu_set_texture_filter(cmd, tile, 0, XGU_TEXTURE_CONVOLUTION_QUINCUNX, cur_tex[tile]->filter, cur_tex[tile]->filter, false, false, false, false);
-        pb_end(cmd);
-    }
+    rst.tex[tile]->wrap_u = cm_to_nv(cms);
+    rst.tex[tile]->wrap_v = cm_to_nv(cmt);
+    rst.tex[tile]->filter = linear_filter ? NV_TEX_FILTER_LINEAR : NV_TEX_FILTER_NONE;
+    rst.tex_changed[tile] = true;
 }
 
 static void gfx_xbox_rapi_set_depth_test(bool depth_test) {
-    z_test = depth_test;
-    cmd = pb_begin();
-    draw_set_ztest(depth_test);
-    pb_end(cmd);
+    rst.ztest = depth_test;
+    rst.flags_changed = rst.ztest_changed = true;
 }
 
 static void gfx_xbox_rapi_set_depth_mask(bool z_upd) {
-    z_write = z_upd;
-    cmd = pb_begin();
-    draw_set_zmask(z_write);
-    pb_end(cmd);
+    rst.zmask = z_upd;
+    rst.flags_changed = rst.zmask_changed = true;
 }
 
 static void gfx_xbox_rapi_set_zmode_decal(bool zmode_decal) {
-    z_decal = zmode_decal;
+    rst.decal = zmode_decal;
+    /*rst.flags_changed = */rst.decal_changed = true;
 }
 
 static void gfx_xbox_rapi_set_viewport(int x, int y, int width, int height) {
-    mtx_viewport(&mat_viewport, x, y, width, height, 0.f, 1.f);
-    if (cur_shader) draw_set_uniforms(cur_shader);
+    rst.view.x = x;
+    rst.view.y = y;
+    rst.view.w = width;
+    rst.view.h = height;
+    rst.view_changed = true;
+    mtx_viewport(&rst.u_viewport, x, y, width, height, 0.f, 1.f);
+    rst.uniforms_changed = true;
 }
 
 static void gfx_xbox_rapi_set_scissor(int x, int y, int width, int height) {
+    rst.clip.x = x;
+    rst.clip.y = y;
+    rst.clip.w = width;
+    rst.clip.h = height;
+    rst.clip_changed = true;
 }
 
 static void gfx_xbox_rapi_set_use_alpha(bool use_alpha) {
-    do_blend = use_alpha;
-    cmd = pb_begin();
-    draw_set_blending(use_alpha);
-    pb_end(cmd);
+    rst.blend = use_alpha;
+    rst.flags_changed = rst.blend_changed = true;
 }
 
 static void gfx_xbox_rapi_draw_triangles(float buf_vbo[], size_t buf_vbo_len, size_t buf_vbo_num_tris) {
     if (vtx_buf_ptr + buf_vbo_len > vtx_buf_end) {
         draw_finish();
-        vtx_buf_ptr = vtx_buf;
+        vtx_buf_ptr = vtx_buf + vtx_buf_cur * VTXBUF_FLOATS;
     }
 
-    // rebind/unbind textures if shader changed
-    if (tex_changed) {
-        cmd = pb_begin();
-        draw_set_texture(0, cur_shader->cc.used_textures[0] ? cur_tex[0] : NULL);
-        draw_set_texture(1, cur_shader->cc.used_textures[1] ? cur_tex[1] : NULL);
-        pb_end(cmd);
-        tex_changed = false;
-    }
-
-    draw_set_vertex_attribs(cur_shader);
+    draw_update_state();
 
     memcpy(vtx_buf_ptr, buf_vbo, buf_vbo_len * sizeof(float));
+
+    draw_reset_vertex_attribs();
+    draw_set_vertex_attribs(rst.shader);
     xgux_draw_arrays(XGU_TRIANGLES, 0, buf_vbo_num_tris * 3);
 
     vtx_buf_ptr += buf_vbo_len;
 }
 
 static void gfx_xbox_rapi_init(void) {
-    vtx_buf = (float *)MmAllocateContiguousMemoryEx(VTXBUF_FLOATS * 4, 0, 0x03FFAFFF, 0, PAGE_WRITECOMBINE | PAGE_READWRITE);
+    vtx_buf = (float *)MmAllocateContiguousMemoryEx(VTXBUF_FLOATS * 4 * 2, 0, 0x03FFAFFF, 0, PAGE_WRITECOMBINE | PAGE_READWRITE);
     if (!vtx_buf) {
         debugPrint("gfx_xbox_rapi_init: unable to alloc %u bytes for vertex buffer\n", VTXBUF_FLOATS * 4 * 2);
         pb_show_debug_screen();
@@ -470,26 +527,30 @@ static void gfx_xbox_rapi_init(void) {
     tex_cache_ptr = tex_cache;
     tex_cache_end = tex_cache + TEXCACHE_SIZE;
 
-    cmd = pb_begin();
+    uint32_t *cmd = pb_begin();
     cmd = xgu_set_cull_face_enable(cmd, false);
     cmd = xgu_set_alpha_func(cmd, XGU_FUNC_GREATER_OR_EQUAL);
     cmd = xgu_set_alpha_ref(cmd, 170);
     cmd = xgu_set_color_clear_value(cmd, 0xff0000ff);
     pb_end(cmd);
+
+    draw_finish();
 }
 
 static void gfx_xbox_rapi_on_resize(void) {
 }
 
 static void gfx_xbox_rapi_start_frame(void) {
-    cmd = pb_begin();
+    uint32_t *cmd = pb_begin();
     cmd = xgu_clear_surface(cmd, XGU_CLEAR_Z | XGU_CLEAR_STENCIL | XGU_CLEAR_COLOR);
     pb_end(cmd);
 
-    vtx_buf_ptr = vtx_buf;
+    vtx_buf_ptr = vtx_buf + vtx_buf_cur * VTXBUF_FLOATS;
+    vtx_buf_end = vtx_buf_ptr + VTXBUF_FLOATS;
 }
 
 static void gfx_xbox_rapi_end_frame(void) {
+    vtx_buf_cur ^= 1;
 }
 
 static void gfx_xbox_rapi_finish_render(void) {

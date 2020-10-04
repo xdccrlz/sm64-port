@@ -23,6 +23,8 @@ int win_height;
 static void gfx_xbox_wapi_init(const char *game_name, bool start_in_fullscreen) {
     XVideoSetMode(640, 480, 32, REFRESH_DEFAULT);
 
+    pb_size(1024 * 1024);
+
     int status;
     if ((status = pb_init())) {
         debugPrint("gfx_xbox_wapi_init: pb_init failed: %d\n", status);
