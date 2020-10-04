@@ -100,6 +100,7 @@ static uint32_t num_textures;
 static struct Texture *cur_tex[2] = { NULL, NULL };
 static struct Texture *last_tex = NULL;
 static uint32_t last_tile = 0;
+static bool tex_changed = false;
 
 static uint8_t *tex_cache = NULL;
 static uint8_t *tex_cache_ptr = NULL;
@@ -146,13 +147,17 @@ static inline void mtx_viewport(XguMatrix4x4 *mtx_out, float x, float y, float w
     mtx_out->f[14] = z_min;
 }
 
-static inline void draw_set_texture(const uint32_t i) {
-    if (cur_tex[i]) {
-        cmd = xgu_set_texture_offset(cmd, i, (const void *)cur_tex[i]->addr);
-        cmd = xgu_set_texture_format(cmd, i, 2, false, XGU_SOURCE_COLOR, 2, cur_tex[i]->format, 1, cur_tex[i]->wshift, cur_tex[i]->hshift, 0);
-        cmd = xgu_set_texture_address(cmd, i, cur_tex[i]->wrap_u, false, cur_tex[i]->wrap_v, false, XGU_CLAMP_TO_EDGE, false, false);
+static inline void draw_finish(void) {
+    while (pb_busy());
+}
+
+static inline void draw_set_texture(const uint32_t i, const struct Texture *tex) {
+    if (tex) {
+        cmd = xgu_set_texture_offset(cmd, i, (const void *)tex->addr);
+        cmd = xgu_set_texture_format(cmd, i, 2, false, XGU_SOURCE_COLOR, 2, tex->format, 1, tex->wshift, tex->hshift, 0);
+        cmd = xgu_set_texture_address(cmd, i, tex->wrap_u, false, tex->wrap_v, false, XGU_CLAMP_TO_EDGE, false, false);
         cmd = xgu_set_texture_control0(cmd, i, true, 0, 0);
-        cmd = xgu_set_texture_filter(cmd, i, 0, XGU_TEXTURE_CONVOLUTION_QUINCUNX, cur_tex[i]->filter, cur_tex[i]->filter, false, false, false, false);
+        cmd = xgu_set_texture_filter(cmd, i, 0, XGU_TEXTURE_CONVOLUTION_QUINCUNX, tex->filter, tex->filter, false, false, false, false);
     } else {
         cmd = xgu_set_texture_control0(cmd, i, false, 0, 0);
     }
@@ -220,7 +225,7 @@ static void gfx_xbox_rapi_unload_shader(struct ShaderProgram *old_prg) {
 }
 
 static void gfx_xbox_rapi_load_shader(struct ShaderProgram *new_prg) {
-    while (pb_busy());
+    draw_finish();
 
     cur_shader = new_prg;
 
@@ -232,6 +237,9 @@ static void gfx_xbox_rapi_load_shader(struct ShaderProgram *new_prg) {
     cmd = pb_begin();
     cmd = xgu_set_alpha_test_enable(cmd, new_prg->cc.opt_texture_edge);
     pb_end(cmd);
+
+    // force it to rebind textures on the next drawcall
+    tex_changed = true;
 
     draw_set_uniforms(cur_shader);
     draw_reset_vertex_attribs();
@@ -335,7 +343,7 @@ static void gfx_xbox_rapi_select_texture(int tile, uint32_t texture_id) {
     last_tex = cur_tex[tile] = tex_pool + texture_id;
     if (last_tex->data) {
         cmd = pb_begin();
-        draw_set_texture(tile);
+        draw_set_texture(last_tile, last_tex);
         pb_end(cmd);
     }
 }
@@ -361,7 +369,7 @@ static void gfx_xbox_rapi_upload_texture(const uint8_t *rgba32_buf, int width, i
     swizzle_rect(rgba32_buf, width, height, tex_cache_ptr, last_tex->pitch, 4);
 
     cmd = pb_begin();
-    draw_set_texture(last_tile);
+    draw_set_texture(last_tile, last_tex);
     pb_end(cmd);
 
     tex_cache_ptr += in_size;
@@ -420,8 +428,17 @@ static void gfx_xbox_rapi_set_use_alpha(bool use_alpha) {
 
 static void gfx_xbox_rapi_draw_triangles(float buf_vbo[], size_t buf_vbo_len, size_t buf_vbo_num_tris) {
     if (vtx_buf_ptr + buf_vbo_len > vtx_buf_end) {
-        while (pb_busy());
+        draw_finish();
         vtx_buf_ptr = vtx_buf;
+    }
+
+    // rebind/unbind textures if shader changed
+    if (tex_changed) {
+        cmd = pb_begin();
+        draw_set_texture(0, cur_shader->cc.used_textures[0] ? cur_tex[0] : NULL);
+        draw_set_texture(1, cur_shader->cc.used_textures[1] ? cur_tex[1] : NULL);
+        pb_end(cmd);
+        tex_changed = false;
     }
 
     draw_set_vertex_attribs(cur_shader);
