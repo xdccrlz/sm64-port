@@ -25,6 +25,7 @@
 #include "audio/audio_pulse.h"
 #include "audio/audio_alsa.h"
 #include "audio/audio_sdl.h"
+#include "audio/audio_xbox.h"
 #include "audio/audio_null.h"
 
 #include "controller/controller_keyboard.h"
@@ -79,14 +80,14 @@ void send_display_list(struct SPTask *spTask) {
 #define SAMPLES_LOW 528
 #endif
 
+static s16 audio_buffer[SAMPLES_HIGH * 2 * 2];
+
 void produce_one_frame(void) {
     gfx_start_frame();
     game_loop_one_iteration();
-#ifndef TARGET_XBOX
     int samples_left = audio_api->buffered();
     u32 num_audio_samples = samples_left < audio_api->get_desired_buffered() ? SAMPLES_HIGH : SAMPLES_LOW;
     //printf("Audio samples: %d %u\n", samples_left, num_audio_samples);
-    s16 audio_buffer[SAMPLES_HIGH * 2 * 2];
     for (int i = 0; i < 2; i++) {
         /*if (audio_cnt-- == 0) {
             audio_cnt = 2;
@@ -96,7 +97,6 @@ void produce_one_frame(void) {
     }
     //printf("Audio samples before submitting: %d\n", audio_api->buffered());
     audio_api->play((u8 *)audio_buffer, 2 * num_audio_samples * 4);
-#endif
     gfx_end_frame();
 }
 
@@ -146,7 +146,7 @@ void main_func(void) {
     main_pool_init();
     gGfxAllocOnlyPool = alloc_only_pool_init();
 #else
-    static u64 pool[0x165000/8 / 4 * sizeof(void *)];
+    static u64 pool[0x165000/8 / 4 * 8];
     main_pool_init(pool, pool + sizeof(pool) / sizeof(pool[0]));
 #endif
     gEffectsMemoryPool = mem_pool_init(0x4000, MEMORY_POOL_LEFT);
@@ -184,7 +184,12 @@ void main_func(void) {
     
     wm_api->set_fullscreen_changed_callback(on_fullscreen_changed);
     wm_api->set_keyboard_callbacks(keyboard_on_key_down, keyboard_on_key_up, keyboard_on_all_keys_up);
-    
+
+#ifdef TARGET_XBOX
+    if (audio_api == NULL && audio_xbox.init()) {
+        audio_api = &audio_xbox;
+    }
+#endif
 #if HAVE_WASAPI
     if (audio_api == NULL && audio_wasapi.init()) {
         audio_api = &audio_wasapi;

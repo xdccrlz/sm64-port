@@ -2,7 +2,7 @@
 // Windows has terrible malloc/free performance, so use dlmalloc
 // instead. This makes malloc/free time per frame go from order of
 // milliseconds to tens of microseconds.
-#ifdef _WIN32
+#if !defined(TARGET_XBOX) && defined(_WIN32)
 #include <errno.h>
 #define FORCEINLINE // define this to nothing to make gcc happy
 #define USE_LOCKS 1
