@@ -113,7 +113,7 @@ endif
 TARGET := sm64.$(VERSION)
 VERSION_CFLAGS := -D$(VERSION_DEF)
 ifeq ($(TARGET_XBOX),1)
-  VERSION_ASFLAGS := -D$(VERSION_DEF)
+  VERSION_ASFLAGS :=
 else
   VERSION_ASFLAGS := --defsym $(VERSION_DEF)=1
 endif
@@ -444,8 +444,6 @@ GEN_XISO       = sm64.iso
 include xbox/xbox_base
 
 CPP := clang-cpp -P
-OBJDUMP := llvm-objdump
-OBJCOPY := llvm-objcopy
 
 NXDK_LIBS := \
   $(NXDK_DIR)/lib/pbkit/pbkit.obj \
@@ -481,11 +479,11 @@ else
   LD := $(CC)
 endif
 CPP := cpp -P
-OBJDUMP := objdump
-OBJCOPY := objcopy
 
 endif # TARGET_XBOX
 
+OBJDUMP := objdump
+OBJCOPY := objcopy
 PYTHON := python3
 
 # Platform-specific compiler and linker flags
