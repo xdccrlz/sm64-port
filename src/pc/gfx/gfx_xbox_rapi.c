@@ -37,8 +37,13 @@
 #define MAX_ATTRIBS 8
 #define MAX_VERTS (2048 * 3)
 
+// stride in the vertex buffer is always the same to allow using the "start index" parameter
+// in draw_arrays to avoid changing vertex attrib pointers all the time
+#define VTX_MAX_FLOATS 32
+#define VTX_STRIDE (VTX_MAX_FLOATS * sizeof(float))
+
 #define TEXCACHE_SIZE (512 * 64 * 32 * 4)
-#define VTXBUF_FLOATS (MAX_VERTS * 32)
+#define VTXBUF_FLOATS (MAX_VERTS * VTX_MAX_FLOATS)
 
 extern int win_width;
 extern int win_height;
@@ -131,7 +136,15 @@ static uint8_t *tex_cache_end = NULL;
 static float *vtx_buf;
 static float *vtx_buf_ptr;
 static float *vtx_buf_end;
-static int vtx_buf_cur;
+static int vtx_buf_half;
+static int vtx_start;
+
+static const float mat_identity[4][4] = {
+    { 1.f, 0.f, 0.f, 0.f },
+    { 0.f, 1.f, 0.f, 0.f },
+    { 0.f, 0.f, 1.f, 0.f },
+    { 0.f, 0.f, 0.f, 1.f },
+};
 
 /* from stackoverflow.com/a/11398748 */
 
@@ -247,7 +260,7 @@ static inline void draw_set_uniforms(const struct ShaderProgram *prg) {
 static inline void draw_set_vertex_attribs(const struct ShaderProgram *prg) {
     for (uint32_t i = 0; i < prg->num_attrs; ++i) {
         if (prg->attr[i].size)
-            xgux_set_attrib_pointer(prg->attr[i].type, XGU_FLOAT, prg->attr[i].size, prg->stride, vtx_buf_ptr + prg->attr[i].ofs);
+            xgux_set_attrib_pointer(prg->attr[i].type, XGU_FLOAT, prg->attr[i].size, VTX_STRIDE, vtx_buf + prg->attr[i].ofs);
     }
 }
 
@@ -260,6 +273,8 @@ static inline void draw_set_shader(struct ShaderProgram *prg) {
     if (prg && prg->prog) {
         draw_set_vertex_shader(prg->prog->vp_inst, *prg->prog->vp_size);
         draw_set_combiner(prg->prog->fp_combiner);
+        draw_reset_vertex_attribs();
+        draw_set_vertex_attribs(prg);
     }
 }
 
@@ -530,21 +545,27 @@ static void gfx_xbox_rapi_set_use_alpha(bool use_alpha) {
 }
 
 static void gfx_xbox_rapi_draw_triangles(float buf_vbo[], size_t buf_vbo_len, size_t buf_vbo_num_tris) {
-    if (vtx_buf_ptr + buf_vbo_len > vtx_buf_end) {
+    const size_t num_verts = buf_vbo_num_tris * 3;
+    const size_t src_stride = buf_vbo_len / num_verts;
+    const size_t src_stride_bytes = src_stride * sizeof(float);
+    const size_t len_aligned = num_verts * VTX_MAX_FLOATS;
+
+    if (vtx_buf_ptr + len_aligned > vtx_buf_end) {
         draw_finish();
-        vtx_buf_ptr = vtx_buf + vtx_buf_cur * VTXBUF_FLOATS;
+        vtx_buf_ptr = vtx_buf + vtx_buf_half * VTXBUF_FLOATS;
+        vtx_start = vtx_buf_half * MAX_VERTS;
     }
 
     draw_update_state();
 
-    memcpy(vtx_buf_ptr, buf_vbo, buf_vbo_len * sizeof(float));
+    for (uint32_t i = 0; i < buf_vbo_len; i += src_stride) {
+        memcpy(vtx_buf_ptr, buf_vbo + i, src_stride_bytes);
+        vtx_buf_ptr += VTX_MAX_FLOATS;
+    }
 
-    draw_reset_vertex_attribs();
-    draw_set_vertex_attribs(rst.shader);
+    xgux_draw_arrays(XGU_TRIANGLES, vtx_start, num_verts);
 
-    xgux_draw_arrays(XGU_TRIANGLES, 0, buf_vbo_num_tris * 3);
-
-    vtx_buf_ptr += buf_vbo_len;
+    vtx_start += num_verts;
 }
 
 static void gfx_xbox_rapi_init(void) {
@@ -613,12 +634,13 @@ static void gfx_xbox_rapi_start_frame(void) {
     cmd = xgu_clear_surface(cmd, XGU_CLEAR_Z | XGU_CLEAR_STENCIL | XGU_CLEAR_COLOR);
     pb_end(cmd);
 
-    vtx_buf_ptr = vtx_buf + vtx_buf_cur * VTXBUF_FLOATS;
+    vtx_buf_ptr = vtx_buf + vtx_buf_half * VTXBUF_FLOATS;
     vtx_buf_end = vtx_buf_ptr + VTXBUF_FLOATS;
+    vtx_start = vtx_buf_half * MAX_VERTS;
 }
 
 static void gfx_xbox_rapi_end_frame(void) {
-    vtx_buf_cur ^= 1;
+    vtx_buf_half ^= 1;
 }
 
 static void gfx_xbox_rapi_finish_render(void) {
