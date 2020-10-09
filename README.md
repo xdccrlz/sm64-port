@@ -31,6 +31,7 @@ cd sm64-port-xbox
 4. Compile using your Docker image: `docker run --rm -v $(pwd):/sm64 sm64_xbox make --jobs`
 
 Alternatively instead of steps 3 and 4 you can use a prebuilt Docker image provided by mkst:
+
 ```docker run --rm -v $(pwd):/sm64 markstreet/sm64:xbox make --jobs```
 
 ### Manually under Windows and Linux
