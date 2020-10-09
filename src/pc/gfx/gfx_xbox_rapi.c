@@ -535,24 +535,12 @@ static void gfx_xbox_rapi_draw_triangles(float buf_vbo[], size_t buf_vbo_len, si
         vtx_buf_ptr = vtx_buf + vtx_buf_cur * VTXBUF_FLOATS;
     }
 
-    // debugClearScreen();
-
-    // debugPrint("start draw buf=%p ptr=%p end=%p\n", vtx_buf, vtx_buf_ptr, vtx_buf_end);
-
     draw_update_state();
-
-    // debugPrint("state dump:\n");
-    // debugPrint("prog: %p (%08x)\n", rst.shader, rst.shader->shader_id);
-    // debugPrint("texc: buf=%p ptr=%p end=%p\n", tex_cache, tex_cache_ptr, tex_cache_end);
-    // debugPrint("tex0: %p / %p   tex1: %p / %p\n", rst.tex[0], rst.tex[0] ? rst.tex[0]->data : NULL, rst.tex[1], rst.tex[1] ? rst.tex[1]->data : NULL);
-    // debugPrint("flag: b%d at%d zt%d zm%d zd%d\n", rst.blend, rst.atest, rst.ztest, rst.zmask, rst.decal);
 
     memcpy(vtx_buf_ptr, buf_vbo, buf_vbo_len * sizeof(float));
 
     draw_reset_vertex_attribs();
     draw_set_vertex_attribs(rst.shader);
-
-    // debugPrint("   do draw len=%04u tris=%04u\n", buf_vbo_len, buf_vbo_num_tris);
 
     xgux_draw_arrays(XGU_TRIANGLES, 0, buf_vbo_num_tris * 3);
 
