@@ -11,7 +11,7 @@
 
 #include "controller_api.h"
 
-#define STICK_DEADZONE 4960
+#define STICK_DEADZONE 8000
 #define BUTTON_DEADZONE 0x20
 
 extern void USBGetEvents(void);
