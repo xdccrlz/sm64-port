@@ -16,7 +16,7 @@ The port uses NXDK and XGU, which are present in the repo as submodules, so you 
 
 On XQEMU and XEMU some depth buffer-related issues are present. These do not seem to exist on real hardware.
 
-Some rendering-related stuff I only figured out thanks to [this Xbox renderer implementation](https://github.com/mborgerson/xsm64).
+Some rendering- and filesystem-related stuff I only figured out thanks to [this Xbox renderer implementation](https://github.com/mborgerson/xsm64).
 
 ### Using Docker
 

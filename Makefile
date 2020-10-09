@@ -437,6 +437,7 @@ ifeq ($(TARGET_XBOX),1)
 
 NXDK_DIR       = $(CURDIR)/xbox/nxdk
 XBE_TITLE      = sm64
+XBE_TITLE_ID   = 0x4e490040
 NXDK_STACKSIZE = 1048576
 OUTPUT_DIR     = $(CURDIR)/$(BUILD_DIR)/out
 GEN_XISO       = sm64.iso
@@ -449,8 +450,9 @@ NXDK_LIBS := \
   $(NXDK_DIR)/lib/pbkit/pbkit.obj \
   $(NXDK_DIR)/lib/libpdclib.lib \
   $(NXDK_DIR)/lib/libwinapi.lib \
-	$(NXDK_DIR)/lib/libnxdk_usb.lib \
   $(NXDK_DIR)/lib/libnxdk_hal.lib \
+  $(NXDK_DIR)/lib/libnxdk.lib \
+  $(NXDK_DIR)/lib/libnxdk_usb.lib \
   $(NXDK_DIR)/lib/libxboxrt.lib \
   $(NXDK_DIR)/lib/xboxkrnl/libxboxkrnl.lib
 
@@ -500,7 +502,7 @@ ifeq ($(TARGET_WEB),1)
   PLATFORM_LDFLAGS := -lm -no-pie -s TOTAL_MEMORY=20MB -g4 --source-map-base http://localhost:8080/ -s "EXTRA_EXPORTED_RUNTIME_METHODS=['callMain']"
 endif
 ifeq ($(TARGET_XBOX),1)
-  PLATFORM_CFLAGS  := $(NXDK_CFLAGS) -Ixbox -DTARGET_XBOX -D_USE_MATH_DEFINES
+  PLATFORM_CFLAGS  := $(NXDK_CFLAGS) -Ixbox -DTARGET_XBOX -D_USE_MATH_DEFINES -DXBE_TITLE_ID=$(XBE_TITLE_ID)
   PLATFORM_LDFLAGS := $(NXDK_LDFLAGS)
   PLATFORM_ASFLAGS := $(NXDK_ASFLAGS) -c
   ifeq ($(DEBUG),y)

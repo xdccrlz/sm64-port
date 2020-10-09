@@ -31,7 +31,7 @@
 #include "controller/controller_keyboard.h"
 
 #include "configfile.h"
-
+#include "utils.h"
 #include "compat.h"
 
 #define CONFIG_FILE "sm64config.txt"
@@ -134,7 +134,7 @@ static void on_anim_frame(double time) {
 #endif
 
 static void save_config(void) {
-    configfile_save(CONFIG_FILE);
+    configfile_save(get_config_filename());
 }
 
 static void on_fullscreen_changed(bool is_now_fullscreen) {
@@ -151,7 +151,7 @@ void main_func(void) {
 #endif
     gEffectsMemoryPool = mem_pool_init(0x4000, MEMORY_POOL_LEFT);
 
-    configfile_load(CONFIG_FILE);
+    configfile_load(get_config_filename());
     atexit(save_config);
 
 #ifdef TARGET_WEB
