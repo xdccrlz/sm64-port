@@ -10,7 +10,7 @@ A prior copy of the game is required to extract the assets.
 
 ## Building Xbox executables
 
-The Xbox port is still early in development. **It currently does not run on real hardware**. Only tested on XQEMU/XEMU.
+The Xbox port is still early in development. Expect issues.
 The port uses NXDK and XGU, which are present in the repo as submodules, so you don't need to install them separately.
 
 ### Manually under Windows and Linux
