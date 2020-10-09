@@ -163,14 +163,46 @@ static int log2_u32(uint32_t value) {
     return tab32[(uint32_t)(value*0x07C4ACDD) >> 27];
 }
 
-static inline void draw_finish(void) {
-    while (pb_busy());
+static inline uint32_t next_pot(uint32_t v) {
+    v--;
+    v |= v >> 1;
+    v |= v >> 2;
+    v |= v >> 4;
+    v |= v >> 8;
+    v |= v >> 16;
+    v++;
+    return v;
 }
 
-static inline void draw_push_wait(void) {
-    uint32_t *cmd = pb_begin();
-    cmd = xgu_wait_for_idle(cmd);
-    pb_end(cmd);
+static inline uint32_t is_pot(const uint32_t v) {
+    return (v & (v - 1)) == 0;
+}
+
+// from https://github.com/z2442/sm64-port
+
+static void resample_32bit(const uint32_t *in, const int inwidth, const int inheight, uint32_t *out, const int outwidth, const int outheight) {
+    int i, j;
+    const uint32_t *inrow;
+    uint32_t frac, fracstep;
+    fracstep = inwidth * 0x10000 / outwidth;
+    for (i = 0; i < outheight; i++, out += outwidth) {
+        inrow = in + inwidth * (i * inheight / outheight);
+        frac = fracstep >> 1;
+        for (j = 0; j < outwidth; j += 4) {
+            out[j] = inrow[frac >> 16];
+            frac += fracstep;
+            out[j + 1] = inrow[frac >> 16];
+            frac += fracstep;
+            out[j + 2] = inrow[frac >> 16];
+            frac += fracstep;
+            out[j + 3] = inrow[frac >> 16];
+            frac += fracstep;
+        }
+    }
+}
+
+static inline void draw_finish(void) {
+    while (pb_busy());
 }
 
 uint32_t* draw_set_texture_control0(uint32_t* p, unsigned int texture_index, bool enable, bool alphakill, uint16_t min_lod, uint16_t max_lod) {
@@ -462,6 +494,18 @@ static void gfx_xbox_rapi_select_texture(int tile, uint32_t texture_id) {
 }
 
 static void gfx_xbox_rapi_upload_texture(const uint8_t *rgba32_buf, int width, int height) {
+    static uint32_t scalebuf[128 * 64];
+
+    if (!is_pot(width) || !is_pot(height)) {
+        // this texture has NPOT dimensions, just rescale it to the next POT
+        const uint32_t old_width = width;
+        const uint32_t old_height = height;
+        width = next_pot(old_width);
+        height = next_pot(old_height);
+        resample_32bit((const uint32_t *)rgba32_buf, old_width, old_height, scalebuf, width, height);
+        rgba32_buf = (const uint8_t *)scalebuf;
+    }
+
     rst.last_tex->width = width;
     rst.last_tex->height = height;
     rst.last_tex->pitch = width * 4;
@@ -479,10 +523,7 @@ static void gfx_xbox_rapi_upload_texture(const uint8_t *rgba32_buf, int width, i
     rst.last_tex->data = tex_cache_ptr;
     rst.last_tex->addr = (uint32_t)tex_cache_ptr & 0x03ffffff;
 
-    if ((((uint32_t)width - 1) & (uint32_t)width) || (((uint32_t)height - 1) & (uint32_t)height))
-        memset(tex_cache_ptr, 0xff, in_size); // TODO: NPOT scaling
-    else
-        swizzle_rect(rgba32_buf, width, height, tex_cache_ptr, rst.last_tex->pitch, 4);
+    swizzle_rect(rgba32_buf, width, height, tex_cache_ptr, rst.last_tex->pitch, 4);
 
     tex_cache_ptr += in_size;
 }
