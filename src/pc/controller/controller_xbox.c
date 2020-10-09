@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <math.h>
+#include <hal/xbox.h>
 #include <hal/input.h>
 
 #include <ultra64.h>
@@ -42,12 +43,19 @@ static void controller_xbox_read(OSContPad *pad) {
 
     if (!xpad) return;
 
+    const bool xpad_black = abutton_pressed(xpad, XPAD_BLACK);
+    const bool xpad_ltrig = abutton_pressed(xpad, XPAD_LEFT_TRIGGER);
+    const bool xpad_rtrig = abutton_pressed(xpad, XPAD_RIGHT_TRIGGER);
+
+    // reboot with the usual "drop out to the dashboard" combination
+    if (dbutton_pressed(xpad, XPAD_BACK) && xpad_black && xpad_ltrig && xpad_rtrig)
+        XReboot();
+
     if (abutton_pressed(xpad, XPAD_A)) pad->button |= A_BUTTON;
     if (abutton_pressed(xpad, XPAD_X)) pad->button |= B_BUTTON;
     if (abutton_pressed(xpad, XPAD_WHITE)) pad->button |= L_TRIG;
-    if (abutton_pressed(xpad, XPAD_BLACK)) pad->button |= R_TRIG;
-    if (abutton_pressed(xpad, XPAD_LEFT_TRIGGER) || abutton_pressed(xpad, XPAD_RIGHT_TRIGGER))
-        pad->button |= Z_TRIG;
+    if (xpad_black) pad->button |= R_TRIG;
+    if (xpad_ltrig || xpad_rtrig) pad->button |= Z_TRIG;
 
     if (dbutton_pressed(xpad, XPAD_START)) pad->button |= START_BUTTON;
 
