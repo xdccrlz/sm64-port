@@ -7,13 +7,14 @@ void main(
 , out float2 vTexCoord : TEXCOORD0
 , out float3 vInput1 : COLOR0
 , out float3 vInput2 : COLOR1
-, uniform float4x4 uViewport
+, uniform float4 uViewScale
+, uniform float4 uViewOfs
 ) {
 vTexCoord = aTexCoord;
 vInput1 = aInput1;
 vInput2 = aInput2;
-float4 pos = mul(aPosition, uViewport);
-pos.xyz /= pos.w;
-vPosition = float4(pos.xyz, aPosition.w);
+float4 pos = aPosition * uViewScale;
+pos.xyz = pos.xyz / pos.w + uViewOfs.xyz;
+vPosition = pos;
 }
 

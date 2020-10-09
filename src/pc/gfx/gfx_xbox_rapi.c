@@ -8,11 +8,11 @@
 #include <math.h>
 #include <string.h>
 #include <windows.h>
+#include <hal/debug.h>
 #include <xboxkrnl/xboxkrnl.h>
 #include <pbkit/pbkit.h>
 #include <xgu/xgu.h>
 #include <xgu/xgux.h>
-#include <hal/debug.h>
 
 #ifndef _LANGUAGE_C
 # define _LANGUAGE_C
@@ -30,6 +30,7 @@
 #define NV_TEX_FILTER_ANISO  4
 #define NV_TEX_FILTER_LINEAR 2
 #define NV_TEX_FILTER_NONE   1
+#define NV_TEX_ALPHAKILL     4
 
 #define MAX_SHADERS 64
 #define MAX_TEXTURES 512
@@ -112,7 +113,8 @@ static struct RenderState {
     bool atest, atest_changed;
     bool flags_changed;
 
-    XguMatrix4x4 u_viewport;
+    XguVec4 u_view_scale;
+    XguVec4 u_view_ofs;
     bool uniforms_changed;
 } rst;
 
@@ -148,18 +150,6 @@ static int log2_u32(uint32_t value) {
     return tab32[(uint32_t)(value*0x07C4ACDD) >> 27];
 }
 
-/* from Voxel9/xbox-xgu-examples */
-
-static inline void mtx_viewport(XguMatrix4x4 *mtx_out, float x, float y, float width, float height, float z_min, float z_max) {
-    mtx_out->f[0]  = width / 2.0f;
-    mtx_out->f[5]  = height / -2.0f;
-    mtx_out->f[10] = z_max - z_min;
-    mtx_out->f[15] = 1.0f;
-    mtx_out->f[12] = x + width / 2.0f;
-    mtx_out->f[13] = y + height / 2.0f;
-    mtx_out->f[14] = z_min;
-}
-
 static inline void draw_finish(void) {
     while (pb_busy());
 }
@@ -170,15 +160,26 @@ static inline void draw_push_wait(void) {
     pb_end(cmd);
 }
 
+uint32_t* draw_set_texture_control0(uint32_t* p, unsigned int texture_index, bool enable, bool alphakill, uint16_t min_lod, uint16_t max_lod) {
+    assert(texture_index < XGU_TEXTURE_COUNT);
+    return push_command_parameter(p, NV097_SET_TEXTURE_CONTROL0 + texture_index*64,
+                                  (enable ? NV097_SET_TEXTURE_CONTROL0_ENABLE : 0) |
+                                  XGU_MASK(NV097_SET_TEXTURE_CONTROL0_MIN_LOD_CLAMP, min_lod) |
+                                  XGU_MASK(NV097_SET_TEXTURE_CONTROL0_MAX_LOD_CLAMP, max_lod) |
+                                  (alphakill ? NV_TEX_ALPHAKILL : 0));
+}
+
 static inline uint32_t *draw_set_texture(uint32_t *cmd, const uint32_t i, const struct Texture *tex) {
     if (tex && tex->data) {
+        cmd = draw_set_texture_control0(cmd, i, true, rst.atest, 0, 0);
         cmd = xgu_set_texture_offset(cmd, i, (const void *)tex->addr);
         cmd = xgu_set_texture_format(cmd, i, 2, false, XGU_SOURCE_COLOR, 2, tex->format, 1, tex->wshift, tex->hshift, 0);
         cmd = xgu_set_texture_address(cmd, i, tex->wrap_u, false, tex->wrap_v, false, XGU_CLAMP_TO_EDGE, false, false);
-        cmd = xgu_set_texture_control0(cmd, i, true, 0, 0);
         cmd = xgu_set_texture_filter(cmd, i, 0, XGU_TEXTURE_CONVOLUTION_QUINCUNX, tex->filter, tex->filter, false, false, false, false);
     } else {
-        cmd = xgu_set_texture_control0(cmd, i, false, 0, 0);
+        // FIXME: disabling the texture makes this die on real hardware
+        //        maybe wait until the current drawcall finishes before doing that?
+        // cmd = draw_set_texture_control0(cmd, i, false, false, 0, 0);
     }
     return cmd;
 }
@@ -191,9 +192,7 @@ static inline uint32_t *draw_set_blending(uint32_t *cmd, const bool do_blend) {
 }
 
 static inline uint32_t *draw_set_ztest(uint32_t *cmd, const bool z_test) {
-    cmd = xgu_set_depth_test_enable(cmd, z_test);
-    cmd = xgu_set_depth_func(cmd, XGU_FUNC_LESS_OR_EQUAL);
-    return cmd;
+    return xgu_set_depth_test_enable(cmd, z_test);
 }
 
 static inline uint32_t *draw_set_zmask(uint32_t *cmd, const bool z_mask) {
@@ -204,17 +203,27 @@ static inline uint32_t *draw_set_atest(uint32_t *cmd, const bool a_test) {
     return xgu_set_alpha_test_enable(cmd, a_test);
 }
 
+static inline uint32_t *draw_set_polygon_offset(uint32_t *cmd, const bool enabled, const float scale, const float ofs) {
+    cmd = push_command_boolean(cmd, NV097_SET_POLY_OFFSET_FILL_ENABLE, enabled);
+    if (enabled) {
+        cmd = push_command_float(cmd, NV097_SET_POLYGON_OFFSET_SCALE_FACTOR, scale);
+        cmd = push_command_float(cmd, NV097_SET_POLYGON_OFFSET_BIAS, ofs);
+    }
+    return cmd;
+}
+
 static inline void draw_set_vertex_shader(const XguTransformProgramInstruction *inst, const uint32_t size) {
     uint32_t *cmd = pb_begin();
-
     cmd = xgu_set_transform_program_start(cmd, 0);
-    cmd = xgu_set_transform_execution_mode(cmd, XGU_PROGRAM, XGU_RANGE_MODE_PRIVATE);
     cmd = xgu_set_transform_program_cxt_write_enable(cmd, false);
+    pb_end(cmd);
+
+    cmd = pb_begin();
     cmd = xgu_set_transform_program_load(cmd, 0);
 
     // FIXME: wait for xgu_set_transform_program to get fixed
-    for(uint32_t i = 0; i < size / 16; i++) {
-        cmd = push_command   (cmd, NV097_SET_TRANSFORM_PROGRAM, 4);
+    for (uint32_t i = 0; i < size / 16; i++) {
+        cmd = push_command(cmd, NV097_SET_TRANSFORM_PROGRAM, 4);
         cmd = push_parameters(cmd, &inst[i].i[0], 4);
     }
 
@@ -230,7 +239,8 @@ static inline void draw_set_combiner(combiner_fn_t combiner) {
 static inline void draw_set_uniforms(const struct ShaderProgram *prg) {
     uint32_t *cmd = pb_begin();
     cmd = xgu_set_transform_constant_load(cmd, 96);
-    cmd = xgu_set_transform_constant(cmd, (XguVec4*)&rst.u_viewport, 4);
+    cmd = xgu_set_transform_constant(cmd, (XguVec4*)&rst.u_view_scale, 1);
+    cmd = xgu_set_transform_constant(cmd, (XguVec4*)&rst.u_view_ofs, 1);
     pb_end(cmd);
 }
 
@@ -247,8 +257,10 @@ static inline void draw_reset_vertex_attribs(void) {
 }
 
 static inline void draw_set_shader(struct ShaderProgram *prg) {
-    draw_set_vertex_shader(prg->prog->vp_inst, *prg->prog->vp_size);
-    draw_set_combiner(prg->prog->fp_combiner);
+    if (prg && prg->prog) {
+        draw_set_vertex_shader(prg->prog->vp_inst, *prg->prog->vp_size);
+        draw_set_combiner(prg->prog->fp_combiner);
+    }
 }
 
 static void draw_update_state(void) {
@@ -277,6 +289,10 @@ static void draw_update_state(void) {
             cmd = draw_set_zmask(cmd, rst.zmask);
             rst.zmask_changed = false;
         }
+        if (rst.decal_changed) {
+            cmd = draw_set_polygon_offset(cmd, rst.decal, -2.f, -2.f);
+            rst.decal_changed = false;
+        }
         pb_end(cmd);
         rst.flags_changed = false;
     }
@@ -292,6 +308,16 @@ static void draw_update_state(void) {
         pb_end(cmd);
     }
 
+    if (rst.view_changed) {
+        // ?
+        rst.view_changed = false;
+    }
+
+    if (rst.clip_changed) {
+        // TODO
+        rst.clip_changed = false;
+    }
+
     if (rst.uniforms_changed) {
         draw_set_uniforms(rst.shader);
         rst.uniforms_changed = false;
@@ -299,7 +325,7 @@ static void draw_update_state(void) {
 }
 
 static bool gfx_xbox_rapi_z_is_from_0_to_1(void) {
-    return false;
+    return true;
 }
 
 static void gfx_xbox_rapi_unload_shader(struct ShaderProgram *old_prg) {
@@ -398,6 +424,12 @@ static void gfx_xbox_rapi_shader_get_info(struct ShaderProgram *prg, uint8_t *nu
 static uint32_t gfx_xbox_rapi_new_texture(void) {
     const uint32_t idx = num_textures++;
 
+    if (idx >= MAX_TEXTURES) {
+        debugPrint("gfx_xbox_rapi_init: unable to alloc %u bytes for vertex buffer\n", VTXBUF_FLOATS * 4 * 2);
+        pb_show_debug_screen();
+        while (1) Sleep(100);
+    }
+
     rst.last_tex = tex_pool + idx;
     rst.last_tex->data = NULL;
     rst.last_tex->addr = 0;
@@ -411,7 +443,7 @@ static uint32_t gfx_xbox_rapi_new_texture(void) {
 static void gfx_xbox_rapi_select_texture(int tile, uint32_t texture_id) {
     rst.last_tile = tile;
     rst.last_tex = rst.tex[tile] = tex_pool + texture_id;
-    if (rst.last_tex->data) rst.tex_changed[tile] = true;
+    rst.tex_changed[tile] = true;
 }
 
 static void gfx_xbox_rapi_upload_texture(const uint8_t *rgba32_buf, int width, int height) {
@@ -432,11 +464,12 @@ static void gfx_xbox_rapi_upload_texture(const uint8_t *rgba32_buf, int width, i
     rst.last_tex->data = tex_cache_ptr;
     rst.last_tex->addr = (uint32_t)tex_cache_ptr & 0x03ffffff;
 
-    swizzle_rect(rgba32_buf, width, height, tex_cache_ptr, rst.last_tex->pitch, 4);
+    if ((((uint32_t)width - 1) & (uint32_t)width) || (((uint32_t)height - 1) & (uint32_t)height))
+        memset(tex_cache_ptr, 0xff, in_size); // TODO: NPOT scaling
+    else
+        swizzle_rect(rgba32_buf, width, height, tex_cache_ptr, rst.last_tex->pitch, 4);
 
     tex_cache_ptr += in_size;
-
-    rst.tex_changed[rst.last_tile] = true;
 }
 
 static inline uint32_t cm_to_nv(const uint32_t val) {
@@ -463,7 +496,7 @@ static void gfx_xbox_rapi_set_depth_mask(bool z_upd) {
 
 static void gfx_xbox_rapi_set_zmode_decal(bool zmode_decal) {
     rst.decal = zmode_decal;
-    /*rst.flags_changed = */rst.decal_changed = true;
+    rst.flags_changed = rst.decal_changed = true;
 }
 
 static void gfx_xbox_rapi_set_viewport(int x, int y, int width, int height) {
@@ -472,7 +505,14 @@ static void gfx_xbox_rapi_set_viewport(int x, int y, int width, int height) {
     rst.view.w = width;
     rst.view.h = height;
     rst.view_changed = true;
-    mtx_viewport(&rst.u_viewport, x, y, width, height, 0.f, 1.f);
+    rst.u_view_scale.x = rst.view.w * 0.5f;
+    rst.u_view_scale.y = rst.view.h * -0.5f;
+    rst.u_view_scale.z = 16777215.f;
+    rst.u_view_scale.w = 1.f;
+    rst.u_view_ofs.x = rst.view.x + rst.u_view_scale.x;
+    rst.u_view_ofs.y = rst.view.y - rst.u_view_scale.y;
+    rst.u_view_ofs.z = 0.f;
+    rst.u_view_ofs.w = 0.f;
     rst.uniforms_changed = true;
 }
 
@@ -495,12 +535,25 @@ static void gfx_xbox_rapi_draw_triangles(float buf_vbo[], size_t buf_vbo_len, si
         vtx_buf_ptr = vtx_buf + vtx_buf_cur * VTXBUF_FLOATS;
     }
 
+    // debugClearScreen();
+
+    // debugPrint("start draw buf=%p ptr=%p end=%p\n", vtx_buf, vtx_buf_ptr, vtx_buf_end);
+
     draw_update_state();
+
+    // debugPrint("state dump:\n");
+    // debugPrint("prog: %p (%08x)\n", rst.shader, rst.shader->shader_id);
+    // debugPrint("texc: buf=%p ptr=%p end=%p\n", tex_cache, tex_cache_ptr, tex_cache_end);
+    // debugPrint("tex0: %p / %p   tex1: %p / %p\n", rst.tex[0], rst.tex[0] ? rst.tex[0]->data : NULL, rst.tex[1], rst.tex[1] ? rst.tex[1]->data : NULL);
+    // debugPrint("flag: b%d at%d zt%d zm%d zd%d\n", rst.blend, rst.atest, rst.ztest, rst.zmask, rst.decal);
 
     memcpy(vtx_buf_ptr, buf_vbo, buf_vbo_len * sizeof(float));
 
     draw_reset_vertex_attribs();
     draw_set_vertex_attribs(rst.shader);
+
+    // debugPrint("   do draw len=%04u tris=%04u\n", buf_vbo_len, buf_vbo_num_tris);
+
     xgux_draw_arrays(XGU_TRIANGLES, 0, buf_vbo_num_tris * 3);
 
     vtx_buf_ptr += buf_vbo_len;
@@ -528,10 +581,37 @@ static void gfx_xbox_rapi_init(void) {
     tex_cache_end = tex_cache + TEXCACHE_SIZE;
 
     uint32_t *cmd = pb_begin();
+    cmd = xgu_set_transform_execution_mode(cmd, XGU_PROGRAM, XGU_RANGE_MODE_PRIVATE);
+    cmd = xgu_set_skin_mode(cmd, XGU_SKIN_MODE_OFF);
+    cmd = xgu_set_specular_enable(cmd, true);
+    cmd = xgu_set_lighting_enable(cmd, false);
     cmd = xgu_set_cull_face_enable(cmd, false);
-    cmd = xgu_set_alpha_func(cmd, XGU_FUNC_GREATER_OR_EQUAL);
-    cmd = xgu_set_alpha_ref(cmd, 170);
     cmd = xgu_set_color_clear_value(cmd, 0xff0000ff);
+    cmd = xgu_set_zstencil_clear_value(cmd, 0xffffffff);
+    cmd = xgu_set_clip_min(cmd, 0.f);
+    cmd = xgu_set_clip_max(cmd, 16777215.f);
+    cmd = xgu_set_viewport_offset(cmd, 0.f, 0.f, 0.f, 0.f);
+    cmd = xgu_set_alpha_func(cmd, XGU_FUNC_GREATER_OR_EQUAL);
+    cmd = xgu_set_alpha_ref(cmd, 255.f * 0.666f);
+    cmd = xgu_set_depth_func(cmd, XGU_FUNC_LESS_OR_EQUAL);
+    cmd = xgu_set_depth_test_enable(cmd, false);
+    cmd = xgu_set_stencil_test_enable(cmd, false);
+    pb_end(cmd);
+
+    // disable all textures because apparently sometimes they're still enabled
+    cmd = pb_begin();
+    for (uint32_t i = 0; i < 4; ++i) {
+        cmd = xgu_set_texture_control0(cmd, i, false, 0, 0);
+        cmd = xgu_set_texture_matrix_enable(cmd, i, false);
+    }
+    pb_end(cmd);
+
+    // set all matrices to the identity matrix even though we're not using them
+    cmd = pb_begin();
+    cmd = xgu_set_projection_matrix(cmd, &mat_identity[0][0]);
+    cmd = xgu_set_model_view_matrix(cmd, 0, &mat_identity[0][0]);
+    cmd = xgu_set_inverse_model_view_matrix(cmd, 0, &mat_identity[0][0]);
+    cmd = xgu_set_composite_matrix(cmd, &mat_identity[0][0]);
     pb_end(cmd);
 
     draw_finish();
