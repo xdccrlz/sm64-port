@@ -16,6 +16,23 @@ The port uses NXDK and XGU, which are present in the repo as submodules, so you 
 
 On XQEMU and XEMU some depth buffer-related issues are present. These do not seem to exist on real hardware.
 
+Some rendering-related stuff I only figured out thanks to [this Xbox renderer implementation](https://github.com/mborgerson/xsm64).
+
+### Using Docker
+
+0. Ensure Git and Docker are installed on your system.
+1. Check out repo, submodules, etc:
+```
+git clone https://github.com/fgsfdsfgs/sm64-port.git -b xbox --recursive sm64-port-xbox
+cd sm64-port-xbox
+```
+2. Copy in your baserom.XX.z64: `cp /path/to/baserom.us.z64 .`
+3. Build Docker image: `docker build . -t sm64_xbox`
+4. Compile using your Docker image: `docker run --rm -v $(pwd):/sm64 sm64_xbox make --jobs`
+
+Alternatively instead of steps 3 and 4 you can use a prebuilt Docker image provided by mkst:
+```docker run --rm -v $(pwd):/sm64 markstreet/sm64:xbox make --jobs```
+
 ### Manually under Windows and Linux
 
 0. [Install prerequisites](https://github.com/XboxDev/nxdk/wiki/Install-the-Prerequisites) for NXDK.
