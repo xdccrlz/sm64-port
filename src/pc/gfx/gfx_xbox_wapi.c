@@ -17,11 +17,17 @@
 #include "gfx_xbox.h"
 #include "macros.h"
 
+#ifdef VERSION_EU
+#define REFRESH_RATE REFRESH_50HZ
+#else
+#define REFRESH_RATE REFRESH_60HZ
+#endif
+
 int win_width;
 int win_height;
 
 static void gfx_xbox_wapi_init(const char *game_name, bool start_in_fullscreen) {
-    XVideoSetMode(640, 480, 32, REFRESH_DEFAULT);
+    XVideoSetMode(640, 480, 32, REFRESH_RATE);
 
     int status;
     if ((status = pb_init())) {
@@ -59,6 +65,7 @@ static void gfx_xbox_wapi_handle_events(void) {
 }
 
 static bool gfx_xbox_wapi_start_frame(void) {
+    pb_wait_for_vbl(); // comment this one out if porting 60fps patch
     pb_wait_for_vbl();
     pb_reset();
     pb_target_back_buffer();
