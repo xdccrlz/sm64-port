@@ -12,6 +12,10 @@
 #include "course_table.h"
 #include "thread6.h"
 
+#ifdef TARGET_PS3
+#include "pc/ps3_save.h"
+#endif
+
 #define MENU_DATA_MAGIC 0x4849
 #define SAVE_FILE_MAGIC 0x4441
 
@@ -266,6 +270,10 @@ void save_file_do_save(s32 fileIndex) {
     }
 
     save_main_menu_data();
+
+#ifdef TARGET_PS3
+    ps3_save_save();
+#endif
 }
 
 void save_file_erase(s32 fileIndex) {

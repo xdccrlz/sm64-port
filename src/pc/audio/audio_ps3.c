@@ -190,6 +190,8 @@ static void audio_thread(UNUSED void *arg) {
         f32 *buf = data_start + aconfig.channelCount * AUDIO_BLOCK_SAMPLES * audio_block_index;
         drain_block(buf);
     }
+
+    sysThreadExit(0);
 }
 
 static bool audio_ps3_init(void) {

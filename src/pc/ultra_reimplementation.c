@@ -7,6 +7,10 @@
 #include <emscripten.h>
 #endif
 
+#ifdef TARGET_PS3
+#include "ps3_save.h"
+#endif
+
 extern OSMgrArgs piMgrArgs;
 
 u64 osClockRate = 62500000;
@@ -122,10 +126,12 @@ s32 osEepromProbe(UNUSED OSMesgQueue *mq) {
 }
 
 s32 osEepromLongRead(UNUSED OSMesgQueue *mq, u8 address, u8 *buffer, int nbytes) {
+#ifndef TARGET_PS3
     u8 content[512];
+#endif
     s32 ret = -1;
 
-#ifdef TARGET_WEB
+#if defined(TARGET_WEB)
     if (EM_ASM_INT({
         var s = localStorage.sm64_save_file;
         if (s && s.length === 684) {
@@ -145,6 +151,8 @@ s32 osEepromLongRead(UNUSED OSMesgQueue *mq, u8 address, u8 *buffer, int nbytes)
         memcpy(buffer, content + address * 8, nbytes);
         ret = 0;
     }
+#elif defined(TARGET_PS3)
+    ret = !ps3_save_read(buffer, address * 8, nbytes);
 #else
     FILE *fp = fopen("sm64_save_file.bin", "rb");
     if (fp == NULL) {
@@ -160,13 +168,15 @@ s32 osEepromLongRead(UNUSED OSMesgQueue *mq, u8 address, u8 *buffer, int nbytes)
 }
 
 s32 osEepromLongWrite(UNUSED OSMesgQueue *mq, u8 address, u8 *buffer, int nbytes) {
+#ifndef TARGET_PS3
     u8 content[512] = {0};
     if (address != 0 || nbytes != 512) {
         osEepromLongRead(mq, 0, content, 512);
     }
     memcpy(content + address * 8, buffer, nbytes);
+#endif
 
-#ifdef TARGET_WEB
+#if defined(TARGET_WEB)
     EM_ASM({
         var str = "";
         for (var i = 0; i < 512; i++) {
@@ -175,6 +185,8 @@ s32 osEepromLongWrite(UNUSED OSMesgQueue *mq, u8 address, u8 *buffer, int nbytes
         localStorage.sm64_save_file = btoa(str);
     }, content);
     s32 ret = 0;
+#elif defined(TARGET_PS3)
+    s32 ret = !ps3_save_write(buffer, address * 8, nbytes);
 #else
     FILE* fp = fopen("sm64_save_file.bin", "wb");
     if (fp == NULL) {

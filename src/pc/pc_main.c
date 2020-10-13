@@ -34,6 +34,10 @@
 
 #include "compat.h"
 
+#ifdef TARGET_PS3
+#include "ps3_save.h"
+#endif
+
 #define CONFIG_FILE "sm64config.txt"
 
 OSMesg D_80339BEC;
@@ -153,12 +157,22 @@ void game_shutdown(void) {
     }
 
     gfx_shutdown();
+
+#ifdef TARGET_PS3
+    ps3_save_save();
+    ps3_save_shutdown();
+#endif
 }
 
 void main_func(void) {
     static u64 pool[0x165000/8 / 4 * sizeof(void *)];
     main_pool_init(pool, pool + sizeof(pool) / sizeof(pool[0]));
     gEffectsMemoryPool = mem_pool_init(0x4000, MEMORY_POOL_LEFT);
+
+#ifdef TARGET_PS3
+    ps3_save_init();
+    ps3_save_load();
+#endif
 
     configfile_load(CONFIG_FILE);
     atexit(game_shutdown);
