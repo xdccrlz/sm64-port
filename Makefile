@@ -609,6 +609,8 @@ ifeq ($(TARGET_PS3),1)
 
 all: $(EXE_SELF)
 
+pkg: $(EXE_SELF:.self=.pkg)
+
 $(BUILD_DIR)/src/pc/gfx/gfx_ps3_rapi.o: $(SHADERDB_FILE)
 
 $(SHADERDB_FILE): $(FPO_O_FILES) $(VPO_O_FILES)
@@ -628,7 +630,7 @@ $(SHADERDB_FILE): $(FPO_O_FILES) $(VPO_O_FILES)
 	$(SELF_NPDRM) $(BUILD_DIR)/$(basename $(notdir $<)).elf $(BUILD_DIR)/pkg/USRDIR/EBOOT.BIN $(CONTENTID) >> /dev/null
 	$(SFO) --title "$(TITLE)" --appid "$(APPID)" -f $(SFOXML) $(BUILD_DIR)/pkg/PARAM.SFO
 	if [ -n "$(PKGFILES)" -a -d "$(PKGFILES)" ]; then cp -rf $(PKGFILES)/* $(BUILD_DIR)/pkg/; fi
-	$(PKG) --contentid $(CONTENTID) $(BUILD_DIR)/pkg/ $@ >> /dev/null
+	$(PKG) --contentid $(CONTENTID) $(BUILD_DIR)/pkg/ $@
 	cp $@ $(basename $@).gnpdrm.pkg
 	$(PACKAGE_FINALIZE) $(basename $@).gnpdrm.pkg
 
@@ -936,7 +938,7 @@ endif
 
 
 
-.PHONY: all clean distclean default diff test load libultra
+.PHONY: all clean distclean default diff test load libultra pkg
 # with no prerequisites, .SECONDARY causes no intermediate target to be removed
 .SECONDARY:
 
