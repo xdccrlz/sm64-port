@@ -2,10 +2,9 @@ void main(
   float2 vTexCoord : TEXCOORD0
 , float4 vInput1 : COLOR0
 , uniform sampler2D uTex0 : TEXUNIT0
-, out float4 outColor
+, out float4 outColor : COLOR
 ) {
 float4 texVal0 = tex2D(uTex0, vTexCoord);
-float4 texel = float4(lerp(vInput1.rgb, texVal0.rgb, texVal0.a), vInput1.a);
+float4 texel = float4(texVal0.rgb, vInput1.a);
 outColor = texel;
 }
-
