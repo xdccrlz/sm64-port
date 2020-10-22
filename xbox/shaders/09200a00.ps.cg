@@ -5,7 +5,7 @@ void main(
 , out float4 outColor
 ) {
 float4 texVal0 = tex2D(uTex0, vTexCoord);
-float4 texel = float4(lerp(vInput1.rgb, texVal0.rgb, texVal0.a), vInput1.a);
+float4 texel = float4(texVal0.rgb, vInput1.a);
 outColor = texel;
 }
 
