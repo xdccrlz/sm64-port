@@ -205,6 +205,7 @@ static void gfx_ps3_set_keyboard_callbacks(bool (*on_key_down)(int scancode), bo
 
 static void gfx_ps3_main_loop(void (*run_one_game_iter)(void)) {
     run_one_game_iter();
+    sysUtilCheckCallback();
 }
 
 static void gfx_ps3_get_dimensions(uint32_t *width, uint32_t *height) {
