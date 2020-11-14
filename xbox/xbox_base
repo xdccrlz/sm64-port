@@ -55,7 +55,7 @@ NXDK_LDFLAGS = -subsystem:windows -fixed:no -entry:XboxCRTEntry \
 
 # Multithreaded LLD on Windows hang workaround
 ifneq (,$(findstring MINGW,$(UNAME_S)))
-NXDK_LDFLAGS += -threads:no
+NXDK_LDFLAGS += -threads:1
 endif
 
 ifeq ($(DEBUG),y)
