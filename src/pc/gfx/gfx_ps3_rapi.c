@@ -447,7 +447,7 @@ static inline void draw_set_environment(void) {
     rsxSetColorMaskMrt(rsx_ctx, 0);
     rsxSetClearColor(rsx_ctx, 0);
     rsxSetClearDepthStencil(rsx_ctx, 0xffffff00);
-    rsxSetZControl(rsx_ctx, 1, 1, 0);
+    rsxSetZMinMaxControl(rsx_ctx, 1, 1, 0);
     rsxSetUserClipPlaneControl(
         rsx_ctx,
         GCM_USER_CLIP_PLANE_DISABLE,
