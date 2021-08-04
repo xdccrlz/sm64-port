@@ -255,7 +255,7 @@ ifeq ($(TARGET_PS2),1)
     ifeq ($(EE_CC_VERSION),)
       $(error No valid GCC found in PATH)
     else
-      USE_NEW_PS2SDK := 1
+      export USE_NEW_PS2SDK := 1
     endif
   endif
   endif
