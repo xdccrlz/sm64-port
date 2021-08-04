@@ -54,7 +54,6 @@ static bool do_render = true;
 
 static volatile unsigned int vblank_count = 0;
 static int vsync_callback_id = -1;
-volatile bool render_finished;
 
 static int vsync_callback(void) {
     if (render_finished) gsKit_display_buffer(gs_global); // working buffer gets displayed
