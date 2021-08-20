@@ -23,8 +23,6 @@ TARGET_N64 ?= 0
 TARGET_WEB ?= 0
 # Build for PS2
 TARGET_PS2 ?= 1
-# Use the WIP GCC9+ toolchain
-USE_NEW_PS2SDK ?= 0
 # Compiler to use (ido or gcc)
 COMPILER ?= ido
 
@@ -245,22 +243,6 @@ ifeq ($(COMPILER),gcc)
   MIPSISET := -mips3
 endif
 
-ifeq ($(TARGET_PS2),1)
-  # try to detect GCC version
-  EE_CC_VERSION := $(shell ee-gcc -dumpversion 2> /dev/null)
-  ifneq ($(EE_CC_VERSION),3.2.2)
-  ifneq ($(EE_CC_VERSION),3.2.3)
-    # maybe new SDK?
-    EE_CC_VERSION := $(shell mips64r5900el-ps2-elf-gcc -dumpversion 2> /dev/null)
-    ifeq ($(EE_CC_VERSION),)
-      $(error No valid GCC found in PATH)
-    else
-      export USE_NEW_PS2SDK := 1
-    endif
-  endif
-  endif
-endif
-
 ifeq ($(TARGET_N64),1)
 
 ifeq ($(VERSION),eu)
@@ -281,7 +263,7 @@ endif
 else
 ifeq ($(TARGET_WEB),1)
   OPT_FLAGS := -O2 -g4 --source-map-base http://localhost:8080/
-else ifeq ($(USE_NEW_PS2SDK),1)
+else ifeq ($(TARGET_PS2),1)
   OPT_FLAGS := -O3 -fno-tree-builtin-call-dce -fno-strict-aliasing
 
 else
@@ -452,16 +434,9 @@ else # TARGET_N64
 
 
 ifeq ($(TARGET_PS2),1)
-  ifeq ($(PS2SDK),)
-    $(error PS2SDK is not defined)
-  endif
-  ifeq ($(USE_NEW_PS2SDK),1)
-    EE_PREFIX ?= mips64r5900el-ps2-elf-
-    EE_AS_PREFIX ?= $(EE_PREFIX)
-  else
-    EE_PREFIX ?= ee-
-    EE_AS_PREFIX ?=
-  endif
+  EE_PREFIX ?= mips64r5900el-ps2-elf-
+  EE_AS_PREFIX ?= $(EE_PREFIX)
+
   CC = $(EE_PREFIX)gcc -std=gnu99
   CXX= $(EE_PREFIX)g++ -std=gnu99
   CPP= $(EE_PREFIX)cpp -P
@@ -511,10 +486,7 @@ ifeq ($(TARGET_PS2),1)
   C_FILES += $(AUDSRV_IRX).c $(FREESD_IRX).c $(BUILD_DIR)/ps2_icon.c
   O_FILES += $(AUDSRV_IRX).o $(FREESD_IRX).o $(BUILD_DIR)/ps2_icon.o
   PLATFORM_CFLAGS  := -DTARGET_PS2 -D_EE -G0 -I$(PS2SDK)/ee/include -I$(PS2SDK)/common/include -I$(GSKIT)/include
-  PLATFORM_LDFLAGS := -L$(GSKIT)/lib -lgskit -ldmakit -L$(PS2SDK)/ee/lib -laudsrv -lpad -lmc -ldma -lcdvd -lpatches
-  ifneq ($(USE_NEW_PS2SDK),1)
-    PLATFORM_ASFLAGS := --32 -march=generic32
-  endif
+  PLATFORM_LDFLAGS := -Wl,-zmax-page-size=128 -L$(GSKIT)/lib -lgskit -ldmakit -L$(PS2SDK)/ee/lib -laudsrv -lpad -lmc -ldma -lcdvd -lpatches
 endif
 
 PLATFORM_CFLAGS += -DNO_SEGMENTED_MEMORY
