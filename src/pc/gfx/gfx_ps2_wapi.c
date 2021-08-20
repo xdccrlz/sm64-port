@@ -75,11 +75,17 @@ static void gfx_ps2_init(const char *game_name, bool start_in_fullscreen) {
 
     vsync_callback_id = gsKit_add_vsync_handler(&vsync_callback);
 
-    if (gsKit_detect_signal() == GS_MODE_NTSC)
-        vid_mode = &vid_modes[0];
-    else
-        vid_mode = &vid_modes[2];
+#if defined(VERSION_EU)
+    vid_mode = &vid_modes[2]; // PAL
+#else
+    vid_mode = &vid_modes[0]; // NTCS
+#endif
 
+    gs_global->Mode = vid_mode->mode;
+    gs_global->Width = vid_mode->width;
+    gs_global->Height = vid_mode->height;
+    gs_global->Interlace = vid_mode->interlace;
+    gs_global->Field = vid_mode->field;
     gs_global->ZBuffering = GS_SETTING_ON;
     gs_global->DoubleBuffering = GS_SETTING_ON;
     gs_global->PrimAAEnable = GS_SETTING_OFF;
