@@ -513,7 +513,7 @@ ifeq ($(TARGET_PS2),1)
   C_FILES += $(AUDSRV_IRX).c $(FREESD_IRX).c $(BUILD_DIR)/ps2_icon.c
   O_FILES += $(AUDSRV_IRX).o $(FREESD_IRX).o $(BUILD_DIR)/ps2_icon.o
   PLATFORM_CFLAGS  := -DTARGET_PS2 -D_EE -G0 -I$(AUDSRV)/ee/rpc/audsrv/include -I$(PS2SDK)/ee/include -I$(PS2SDK)/common/include -I$(GSKIT)/include
-  PLATFORM_LDFLAGS := -L$(GSKIT)/lib -lgskit -ldmakit $(AUDSRV_LIB) -L$(PS2SDK)/ee/lib -lpad -lmc -ldma -lcdvd -lpatches -lm -lc -lkernel
+  PLATFORM_LDFLAGS := -L$(GSKIT)/lib -lgskit -ldmakit $(AUDSRV_LIB) -L$(PS2SDK)/ee/lib -lpad -lmc -ldma -lcdvd -lpatches
   ifneq ($(USE_NEW_PS2SDK),1)
     PLATFORM_ASFLAGS := --32 -march=generic32
   endif
