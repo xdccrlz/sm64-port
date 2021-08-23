@@ -13,8 +13,6 @@
 #include "gfx_window_manager_api.h"
 #include "gfx_screen_config.h"
 #include "gfx_ps2.h"
-#define FRAMERATE_SHIFT 1
-#define FRAMESKIP 10
 
 struct VidMode {
     const char *name;
@@ -44,36 +42,71 @@ static const struct VidMode vid_modes[] = {
 
 GSGLOBAL *gs_global;
 
+static int vsync_sema_1st_id;
+static int vsync_sema_2nd_id;
+static int vsync_sema_id = 0;
+
 static const struct VidMode *vid_mode;
 
-static unsigned int window_width = DESIRED_SCREEN_WIDTH;
-static unsigned int window_height = DESIRED_SCREEN_HEIGHT;
+/* Copy of gsKit_sync_flip, but without the 'flip' */
+static void gsKit_sync(GSGLOBAL *gsGlobal)
+{
+    WaitSema(vsync_sema_1st_id);
+    WaitSema(vsync_sema_2nd_id);
+}
 
-static unsigned int last = 0;
-static bool do_render = true;
+/* Copy of gsKit_sync_flip, but without the 'sync' */
+static void gsKit_flip(GSGLOBAL *gsGlobal)
+{
+   if (!gsGlobal->FirstFrame)
+   {
+      if (gsGlobal->DoubleBuffering == GS_SETTING_ON)
+      {
+         GS_SET_DISPFB2( gsGlobal->ScreenBuffer[
+               gsGlobal->ActiveBuffer & 1] / 8192,
+               gsGlobal->Width / 64, gsGlobal->PSM, 0, 0 );
 
-static volatile unsigned int vblank_count = 0;
-static int vsync_callback_id = -1;
+         gsGlobal->ActiveBuffer ^= 1;
+      }
 
-static int vsync_callback(void) {
-    if (render_finished) gsKit_display_buffer(gs_global); // working buffer gets displayed
+   }
 
-    ++vblank_count;
+   gsKit_setactive(gsGlobal);
+}
 
-    ExitHandler();
+/* PRIVATE METHODS */
+static int vsync_handler()
+{
+   iSignalSema(vsync_sema_id ? vsync_sema_2nd_id : vsync_sema_1st_id);
+   vsync_sema_id ^= 1;
 
-    return 0;
+   ExitHandler();
+   return 0;
+}
+
+static void prepare_sema() {
+    ee_sema_t sema_1st;
+    sema_1st.init_count = 0;
+    sema_1st.max_count = 1;
+    sema_1st.option = 0;
+    vsync_sema_1st_id = CreateSema(&sema_1st);
+
+    ee_sema_t sema_2nd;
+    sema_2nd.init_count = 0;
+    sema_2nd.max_count = 1;
+    sema_2nd.option = 0;
+    vsync_sema_2nd_id = CreateSema(&sema_2nd);
 }
 
 static void gfx_ps2_init(const char *game_name, bool start_in_fullscreen) {
+    prepare_sema();
+
     gs_global = gsKit_init_global();
 
     dmaKit_init(D_CTRL_RELE_OFF, D_CTRL_MFD_OFF, D_CTRL_STS_UNSPEC,
                 D_CTRL_STD_OFF, D_CTRL_RCYC_8, 1 << DMA_CHANNEL_GIF);
 
     dmaKit_chan_init(DMA_CHANNEL_GIF);
-
-    vsync_callback_id = gsKit_add_vsync_handler(&vsync_callback);
 
 #if defined(VERSION_EU)
     vid_mode = &vid_modes[2]; // PAL
@@ -93,10 +126,8 @@ static void gfx_ps2_init(const char *game_name, bool start_in_fullscreen) {
     gs_global->PSMZ = GS_PSMZ_16; // 16-bit unsigned zbuffer
 
     gsKit_init_screen(gs_global);
-
-    window_width = gs_global->Width;
-    window_height = gs_global->Height;
-    render_finished = true; //Prevents startup softlock
+    gsKit_TexManager_init(gs_global);
+    gsKit_add_vsync_handler(vsync_handler);
 }
 
 static void gfx_ps2_set_fullscreen_changed_callback(void (*on_fullscreen_changed)(bool is_now_fullscreen)) {
@@ -112,25 +143,12 @@ static void gfx_ps2_set_keyboard_callbacks(bool (*on_key_down)(int scancode), bo
 }
 
 static void gfx_ps2_main_loop(void (*run_one_game_iter)(void)) {
-    const unsigned int now = vblank_count >> FRAMERATE_SHIFT;
-    if (!last) last = now;
-
-    const unsigned int frames = now - last;
-
-    if (frames) {
-        // catch up but skip the first FRAMESKIP frames
-        int skip = (frames > FRAMESKIP) ? FRAMESKIP : (frames - 1);
-        for (unsigned int f = 0; f < frames; ++f, --skip) {
-            do_render = (skip <= 0);
-            run_one_game_iter();
-        }
-        last = now;
-    }
+    run_one_game_iter();
 }
 
 static void gfx_ps2_get_dimensions(uint32_t *width, uint32_t *height) {
-    *width = window_width;
-    *height = window_height;
+    *width = gs_global->Width;
+    *height = gs_global->Height;
 }
 
 static void gfx_ps2_handle_events(void) {
@@ -138,15 +156,19 @@ static void gfx_ps2_handle_events(void) {
 }
 
 static bool gfx_ps2_start_frame(void) {
-    if (do_render) gsKit_sync_flip(gs_global);
-    return do_render;
+    return 1;
 }
 
 static void gfx_ps2_swap_buffers_begin(void) {
 }
 
 static void gfx_ps2_swap_buffers_end(void) {
+    /* How SM64 expect to run at 30 PFS we need to wait for 2 vsync */
+    gsKit_sync(gs_global);
 
+    gsKit_flip(gs_global);
+    gsKit_queue_exec(gs_global);
+    gsKit_TexManager_nextFrame(gs_global);
 }
 
 static double gfx_ps2_get_time(void) {
