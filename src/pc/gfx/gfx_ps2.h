@@ -6,5 +6,4 @@
 
 extern struct GfxWindowManagerAPI gfx_ps2_wapi;
 extern struct GfxRenderingAPI gfx_ps2_rapi;
-extern volatile bool render_finished;
 #endif

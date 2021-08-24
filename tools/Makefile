@@ -16,7 +16,7 @@ endif
 default: all
 
 armips: armips.cpp
-	$(CXX) $(CXXFLAGS) -fno-exceptions -fno-rtti -pipe -std=c++11 -stdlib=libc++ $^ -o $@ -lpthread $(ARMIPS_FLAGS)
+	$(CXX) $(CXXFLAGS) -fno-exceptions -fno-rtti -pipe -std=c++11 $^ -o $@ -lpthread $(ARMIPS_FLAGS)
 
 n64graphics_SOURCES := n64graphics.c utils.c
 n64graphics_CFLAGS  := -DN64GRAPHICS_STANDALONE
