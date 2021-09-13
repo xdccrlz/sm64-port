@@ -22,5 +22,5 @@
 *.png binary
 *.aiff binary
 
-# Declare files that will always have CRLF line endings on checkout.
+# Declare files that will always have LF line endings on checkout.
 *.py text eol=lf
