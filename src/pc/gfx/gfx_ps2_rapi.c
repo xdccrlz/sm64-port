@@ -142,6 +142,7 @@ static bool a_test = false;
 static bool do_blend = false;
 
 static const uint64_t c_white = GS_SETREG_RGBAQ(0x80, 0x80, 0x80, 0x80, 0x00);
+static const uint64_t c_black = GS_SETREG_RGBAQ(0x00, 0x00, 0x00, 0x80, 0x00);
 
 static inline float fclamp(const float v, const float min, const float max) {
     return (v < min) ? min : (v > max) ? max : v;
@@ -1049,7 +1050,7 @@ static void gfx_ps2_on_resize(void) {
 }
 
 static void gfx_ps2_start_frame(void) {
-    draw_clear(c_white);
+    draw_clear(c_black);
 }
 
 static void gfx_ps2_end_frame(void) {
