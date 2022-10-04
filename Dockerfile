@@ -9,7 +9,7 @@ RUN apt-get update && \
         python3 \
         wget
 
-RUN wget https://github.com/ps2dev/ps2dev/releases/download/latest/ps2dev-ubuntu-latest.tar.gz && \
+RUN wget https://github.com/ps2dev/ps2dev/releases/download/v1.2.0/ps2dev-ubuntu-latest.tar.gz && \
     tar xzf ps2dev-ubuntu-latest.tar.gz && \
     rm ps2dev-ubuntu-latest.tar.gz
 
